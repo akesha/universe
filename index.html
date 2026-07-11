@@ -121,7 +121,7 @@
   </div>
 
   <div id="sunTag" class="suntag">Click the Sun to zoom in &rarr;</div>
-  <a id="toGroup" href="Local Group.html">&uarr; Zoom out: the Local Group</a>
+  <a id="toGroup" href="local-group.html">&uarr; Zoom out: the Local Group</a>
 
   <div id="controls">
     <button id="playpause" type="button">Pause</button>
@@ -368,7 +368,7 @@
     });
     canvas.addEventListener('click', function (e) {
       if (state === 'galaxy' && sunHit(e.clientX, e.clientY)) {
-        if (!sf.src) sf.src = 'Solar System.html';
+        if (!sf.src) sf.src = 'solar-system.html';
         state = 'zooming';
       }
     });

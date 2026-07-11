@@ -139,7 +139,7 @@
   </div>
 
   <div id="earthTag" class="earthtag">Click Earth to explore &rarr;</div>
-  <a id="toGalaxy" href="Milky Way.html">&uarr; Zoom out: the Sun&rsquo;s orbit</a>
+  <a id="toGalaxy" href="index.html">&uarr; Zoom out: the Sun&rsquo;s orbit</a>
 
   <div id="globeView">
     <iframe id="globeFrame" title="Interactive globe explorer" loading="lazy"></iframe>
@@ -397,7 +397,7 @@
     }
     function enterGlobe() {
       if (state !== 'system') return;
-      if (!gf.src) gf.src = 'Globe Loader.html';
+      if (!gf.src) gf.src = 'globe-loader.html';
       state = 'zooming';
     }
     canvas.addEventListener('pointermove', function (e) {
