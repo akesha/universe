@@ -884,16 +884,10 @@
       });
 
       // ---- bio (stable) from Claude ----
-      const prompt = 'In exactly 2 vivid sentences, describe what the country "' + name
-        + '" is best known for — geography, culture, or a notable fact. Plain text, no preamble, no markdown.';
-      window.claude.complete(prompt).then(function (text) {
+      fetchWikiSummary(name).then(function (text) {
         if (id !== reqId) return;
         bioWrap.innerHTML = '<p class="bio"></p>';
-        bioWrap.querySelector('.bio').textContent = (text || '').trim();
-      }).catch(function () {
-        if (id !== reqId) return;
-        bioWrap.innerHTML = '<p class="bio"></p>';
-        bioWrap.querySelector('.bio').textContent = 'Could not load a description right now.';
+        bioWrap.querySelector('.bio').textContent = text;
       });
     }
 
@@ -927,19 +921,21 @@
         if (facts.flag) setFlag(facts.flag, name + ' flag');
       });
 
-      const prompt = 'In exactly 2 vivid sentences, describe the ' + type + ' of ' + name
-        + (country ? ' in ' + country.properties.name : '') + ' — what it is known for. Plain text, no preamble, no markdown.';
-      window.claude.complete(prompt).then(function (text) {
+      const regionTitle = name + (country ? ', ' + country.properties.name : '');
+      fetchWikiSummary(regionTitle).then(function (text) {
         if (id !== reqId) return;
         bioWrap.innerHTML = '<p class="bio"></p>';
-        bioWrap.querySelector('.bio').textContent = (text || '').trim();
-      }).catch(function () {
-        if (id !== reqId) return;
-        bioWrap.innerHTML = '<p class="bio"></p>';
-        bioWrap.querySelector('.bio').textContent = 'Could not load a description right now.';
+        bioWrap.querySelector('.bio').textContent = text;
       });
     }
     function cap1(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+    function fetchWikiSummary(title) {
+      const url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title);
+      return fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+        return j.extract || '—';
+      }).catch(function () { return '—'; });
+    }
 
     // Query Wikidata for a subdivision: capital, head of government, office title, flag.
     function fetchRegionFacts(feature) {
