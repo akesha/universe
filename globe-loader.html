@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Globe Loader</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #f1efe9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #stage {
+    width: 200px;
+    height: 200px;
+    position: relative;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 200px;
+    height: 200px;
+  }
+</style>
+</head>
+<body>
+<nav id="universe-nav" style="position:fixed;top:18px;right:20px;z-index:9999;display:flex;gap:6px;font-family:ui-monospace,SF Mono,Cascadia Mono,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;"><style>#universe-nav a{color:#98a0b3;text-decoration:none;padding:5px 11px;background:rgba(10,14,24,0.65);border:1px solid rgba(255,255,255,0.14);border-radius:100px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:color .15s}#universe-nav a:hover,#universe-nav a.active{color:#eef0f6}</style><a href="index.html">Milky Way</a><a href="local-group.html">Local Group</a><a href="solar-system.html">Solar System</a><a href="globe.html">Globe</a></nav>
+  <div id="stage">
+    <canvas id="whirl"></canvas>
+    <canvas id="globe"></canvas>
+  </div>
+
+  <script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+  <script>
+  (function () {
+    const SIZE = 200;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const INK = '#2b2a28';
+    const OCEAN = '#e3e0d8';
+    const LAND = '#c9c5ba';
+
+    function setup(canvas) {
+      canvas.width = SIZE * DPR;
+      canvas.height = SIZE * DPR;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(DPR, DPR);
+      return ctx;
+    }
+
+    const globeCanvas = document.getElementById('globe');
+    const whirlCanvas = document.getElementById('whirl');
+    const gctx = setup(globeCanvas);
+    const wctx = setup(whirlCanvas);
+
+    const R = 78;                       // globe radius
+    const CENTER = [SIZE / 2, SIZE / 2];
+
+    const projection = d3.geoOrthographic()
+      .scale(R)
+      .translate(CENTER)
+      .clipAngle(90)
+      .precision(0.4);
+
+    const path = d3.geoPath(projection, gctx);
+    const graticule = d3.geoGraticule10();
+
+    let land = null, countries = null;
+    const sphere = { type: 'Sphere' };
+
+    // ---- Whirl: orbiting dashed arcs + motes around the globe ----
+    function drawWhirl(t) {
+      wctx.clearRect(0, 0, SIZE, SIZE);
+      wctx.save();
+      wctx.translate(CENTER[0], CENTER[1]);
+
+      const rings = [
+        { r: R + 9,  speed: -0.9, dash: [14, 26], width: 1.4, alpha: 0.55 },
+        { r: R + 16, speed: 0.55, dash: [6, 34],  width: 1.1, alpha: 0.32 }
+      ];
+      rings.forEach(function (ring) {
+        wctx.save();
+        wctx.rotate(t * ring.speed);
+        wctx.beginPath();
+        wctx.arc(0, 0, ring.r, 0, Math.PI * 2);
+        wctx.setLineDash(ring.dash);
+        wctx.lineWidth = ring.width;
+        wctx.strokeStyle = INK;
+        wctx.globalAlpha = ring.alpha;
+        wctx.lineCap = 'round';
+        wctx.stroke();
+        wctx.restore();
+      });
+
+      // motes flung around the orbit
+      wctx.setLineDash([]);
+      const N = 5;
+      for (let i = 0; i < N; i++) {
+        const a = t * 1.4 + (i / N) * Math.PI * 2;
+        const rr = R + 13 + Math.sin(t * 2 + i) * 4;
+        const x = Math.cos(a) * rr;
+        const y = Math.sin(a) * rr;
+        const sz = 1.6 + (i % 2) * 0.8;
+        wctx.beginPath();
+        wctx.arc(x, y, sz, 0, Math.PI * 2);
+        wctx.fillStyle = INK;
+        wctx.globalAlpha = 0.25 + 0.5 * (0.5 + 0.5 * Math.sin(t * 3 + i));
+        wctx.fill();
+      }
+      wctx.restore();
+    }
+
+    function drawGlobe() {
+      gctx.clearRect(0, 0, SIZE, SIZE);
+
+      // ocean disc
+      gctx.beginPath();
+      path(sphere);
+      gctx.fillStyle = OCEAN;
+      gctx.fill();
+
+      if (land) {
+        gctx.beginPath();
+        path(land);
+        gctx.fillStyle = LAND;
+        gctx.fill();
+      }
+
+      // graticule
+      gctx.beginPath();
+      path(graticule);
+      gctx.strokeStyle = INK;
+      gctx.globalAlpha = 0.12;
+      gctx.lineWidth = 0.5;
+      gctx.stroke();
+      gctx.globalAlpha = 1;
+
+      // country outlines
+      if (countries) {
+        gctx.beginPath();
+        path(countries);
+        gctx.strokeStyle = INK;
+        gctx.globalAlpha = 0.85;
+        gctx.lineWidth = 0.6;
+        gctx.stroke();
+        gctx.globalAlpha = 1;
+      }
+
+      // sphere rim
+      gctx.beginPath();
+      path(sphere);
+      gctx.strokeStyle = INK;
+      gctx.lineWidth = 1.2;
+      gctx.stroke();
+    }
+
+    let start = null;
+    function frame(ts) {
+      if (start === null) start = ts;
+      const elapsed = (ts - start) / 1000;
+      // spin around the vertical axis; gentle fixed tilt
+      projection.rotate([elapsed * 22, -12, 0]);
+      drawGlobe();
+      drawWhirl(elapsed);
+      requestAnimationFrame(frame);
+    }
+
+    // Paint one frame synchronously so the globe is visible even before the
+    // first animation tick (rAF is throttled while the tab is backgrounded).
+    projection.rotate([0, -12, 0]);
+    drawGlobe();
+    drawWhirl(0);
+    requestAnimationFrame(frame);
+
+    fetch('https://unpkg.com/world-atlas@2.0.2/countries-110m.json')
+      .then(function (r) { return r.json(); })
+      .then(function (world) {
+        land = topojson.feature(world, world.objects.countries);
+        countries = topojson.mesh(world, world.objects.countries, function (a, b) { return a !== b; });
+      })
+      .catch(function (e) { console.error('map load failed', e); });
+  })();
+  </script>
+</body>
+</html>

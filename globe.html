@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Globe Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #05070d;
+    --ink: #eef0f6;
+    --ink-soft: #98a0b3;
+    --line: rgba(255,255,255,0.16);
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1100px 760px at 16% 20%, rgba(58,80,150,0.20), transparent 62%),
+      radial-gradient(980px 720px at 84% 82%, rgba(120,62,128,0.14), transparent 60%),
+      radial-gradient(1200px 1000px at 50% 46%, rgba(18,26,52,0.45), transparent 72%),
+      #05070d;
+  }
+  #space {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    z-index: 0; display: block; pointer-events: none;
+  }
+  #app { position: relative; z-index: 1; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+  #app {
+    display: flex;
+    align-items: center;
+    gap: 56px;
+    max-width: 860px;
+    width: 100%;
+  }
+
+  /* ---- Globe ---- */
+  #stage {
+    width: 360px;
+    height: 360px;
+    position: relative;
+    flex: 0 0 auto;
+    cursor: grab;
+    touch-action: none;
+  }
+  #stage.dragging { cursor: grabbing; }
+  #stage canvas {
+    position: absolute;
+    inset: 0;
+    width: 360px;
+    height: 360px;
+  }
+
+  /* ---- Panel ---- */
+  #panel { flex: 1 1 0; min-width: 0; max-width: 380px; }
+  .hint {
+    font-size: 13px; letter-spacing: 0.02em; color: var(--ink-soft);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .hint .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ink); opacity: 0.55;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:.2} 50%{opacity:.7} }
+
+  .card { opacity: 0; transform: translateY(6px); transition: opacity .4s ease, transform .4s ease; }
+  .card.show { opacity: 1; transform: none; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 12px;
+  }
+  .titlerow { display: flex; align-items: center; gap: 14px; margin: 0 0 16px; }
+  .flag {
+    width: 56px; height: 38px; flex: 0 0 auto; border-radius: 3px;
+    object-fit: cover; background: rgba(255,255,255,0.08);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 6px 20px rgba(0,0,0,.5);
+    opacity: 0; transition: opacity .35s ease;
+  }
+  .flag.show { opacity: 1; }
+  .name {
+    font-family: "Spectral", Georgia, serif; font-weight: 500;
+    font-size: 34px; line-height: 1.05; margin: 0; letter-spacing: -0.01em;
+  }
+
+  .facts {
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 14px 0; margin: 0 0 16px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; align-items: start;
+  }
+  .fact .k {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 4px;
+  }
+  .fact .v {
+    font-family: "Spectral", Georgia, serif; font-size: 16px; line-height: 1.3; margin: 0;
+  }
+  .fact .v small { display:block; font-size: 12px; color: var(--ink-soft); font-family: system-ui, sans-serif; margin-top: 2px; }
+  .ldr { display: block; }
+  .ldr + .ldr { margin-top: 9px; }
+  .muted { color: var(--ink-soft); }
+  .src {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    color: var(--ink-soft); margin: 16px 0 0; opacity: 0.8;
+  }
+  .zoombtn {
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+    border: 1px solid var(--ink); background: transparent; color: var(--ink);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 11px 14px; border-radius: 2px; margin-top: 18px; width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background .15s ease, color .15s ease;
+  }
+  .zoombtn:hover { background: var(--ink); color: var(--bg); }
+  .zoombtn[hidden] { display: none; }
+  .backbtn {
+    position: absolute; top: 4px; left: 4px; z-index: 5;
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+    border: 1px solid var(--line); background: rgba(8,12,22,.6); color: var(--ink);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    padding: 7px 11px; border-radius: 2px; display: flex; align-items: center; gap: 6px;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  .backbtn:hover { border-color: var(--ink); }
+  .backbtn[hidden] { display: none; }
+  .loading {
+    position: absolute; inset: 0; z-index: 6;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; color: var(--ink);
+    background: rgba(5,7,13,.5); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+    padding: 0 20px;
+  }
+  .loading[hidden] { display: none; }
+
+  .bio {
+    font-family: "Spectral", Georgia, serif; font-size: 16px; line-height: 1.55;
+    margin: 0; text-wrap: pretty; color: #cfd4df;
+  }
+  .skeleton { display: grid; gap: 9px; }
+  .skeleton .bar {
+    height: 12px; border-radius: 3px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.15) 37%, rgba(255,255,255,0.05) 63%);
+    background-size: 400% 100%; animation: shimmer 1.4s ease infinite;
+  }
+  .skeleton .bar:nth-child(3) { width: 60%; }
+  @keyframes shimmer { 0%{background-position:100% 0} 100%{background-position:0 0} }
+
+  @media (max-width: 760px) {
+    #app { flex-direction: column; gap: 32px; }
+    #panel { max-width: 380px; }
+  }
+  #toSystem {
+    position: fixed; top: 30px; left: 30px; z-index: 5;
+    appearance: none; cursor: pointer; border: 1px solid var(--line);
+    background: rgba(10,14,24,0.6); color: var(--ink);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em;
+    padding: 9px 14px; border-radius: 100px; text-decoration: none;
+    transition: border-color .15s;
+  }
+  #toSystem:hover { border-color: var(--accent, #6cb6ff); }
+</style>
+</head>
+<body>
+<nav id="universe-nav" style="position:fixed;top:18px;right:20px;z-index:9999;display:flex;gap:6px;font-family:ui-monospace,SF Mono,Cascadia Mono,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;"><style>#universe-nav a{color:#98a0b3;text-decoration:none;padding:5px 11px;background:rgba(10,14,24,0.65);border:1px solid rgba(255,255,255,0.14);border-radius:100px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:color .15s}#universe-nav a:hover,#universe-nav a.active{color:#eef0f6}</style><a href="index.html">Milky Way</a><a href="local-group.html">Local Group</a><a href="solar-system.html">Solar System</a><a href="globe.html" class="active">Globe</a></nav>
+  <canvas id="space"></canvas>
+  <a id="toSystem" href="Solar System.html">&uarr; Back to Solar System</a>
+  <div id="app">
+    <div id="stage">
+      <canvas id="whirl"></canvas>
+      <canvas id="globe"></canvas>
+      <button id="back" class="backbtn" hidden type="button">‹ Back to globe</button>
+      <div id="loading" class="loading" hidden>Loading regions…</div>
+    </div>
+    <div id="panel">
+      <div id="hint" class="hint"><span class="dot"></span>Drag to spin · click a country</div>
+      <div id="card" class="card">
+        <p class="eyebrow" id="eyebrow">Country</p>
+        <div class="titlerow">
+          <img id="flag" class="flag" alt="" referrerpolicy="no-referrer">
+          <h1 class="name" id="name">—</h1>
+        </div>
+        <div class="facts">
+          <div class="fact"><p class="k">Capital</p><p class="v" id="capital">—</p></div>
+          <div class="fact"><p class="k">Current leader</p><p class="v" id="leader">—</p></div>
+        </div>
+        <div id="bioWrap"><p class="bio" id="bio"></p></div>
+        <button id="zoom" class="zoombtn" hidden type="button">Explore states &amp; provinces →</button>
+        <p class="src">Capital, leaders &amp; flags: live from Wikidata · overview: AI</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+  <script>
+  (function () {
+    // Hide the "Back to Solar System" link when embedded inside the Solar System
+    // view, which supplies its own back button.
+    if (window.self !== window.top) {
+      var ts = document.getElementById('toSystem'); if (ts) ts.style.display = 'none';
+    }
+    const SIZE = 360;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const INK = '#23221f';
+    const OCEAN = '#13567f';
+    const OCEAN_RIM = '#0c3d5c';
+    const LAND = '#4c6444';   // natural land tone used until the satellite texture loads
+
+    // vibrant categorical palette for countries
+    const PALETTE = ['#e8552d','#f2a93b','#3aa66f','#e0b13a','#6c5fc0','#d24b8f',
+                     '#7eb53a','#1aa6a0','#5b8def','#b15bd6','#e07a3f','#d9434c',
+                     '#2fa3c9','#8bb024','#c2693a','#5cc08a'];
+    function colorFor(name) {
+      let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+      return PALETTE[h % PALETTE.length];
+    }
+
+    // numeric ISO-3166 -> alpha-2 (covers the 110m country set)
+    const ISO = '4:AF,8:AL,12:DZ,20:AD,24:AO,28:AG,31:AZ,32:AR,36:AU,40:AT,44:BS,48:BH,50:BD,51:AM,52:BB,56:BE,60:BM,64:BT,68:BO,70:BA,72:BW,76:BR,84:BZ,90:SB,96:BN,100:BG,104:MM,108:BI,112:BY,116:KH,120:CM,124:CA,132:CV,140:CF,144:LK,148:TD,152:CL,156:CN,158:TW,170:CO,174:KM,178:CG,180:CD,184:CK,188:CR,191:HR,192:CU,196:CY,203:CZ,204:BJ,208:DK,212:DM,214:DO,218:EC,222:SV,226:GQ,231:ET,232:ER,233:EE,242:FJ,246:FI,250:FR,254:GF,258:PF,260:TF,262:DJ,266:GA,268:GE,270:GM,275:PS,276:DE,288:GH,300:GR,304:GL,308:GD,320:GT,324:GN,328:GY,332:HT,340:HN,348:HU,352:IS,356:IN,360:ID,364:IR,368:IQ,372:IE,376:IL,380:IT,384:CI,388:JM,392:JP,398:KZ,400:JO,404:KE,408:KP,410:KR,414:KW,417:KG,418:LA,422:LB,426:LS,428:LV,430:LR,434:LY,438:LI,440:LT,442:LU,450:MG,454:MW,458:MY,462:MV,466:ML,470:MT,478:MR,480:MU,484:MX,492:MC,496:MN,498:MD,499:ME,504:MA,508:MZ,512:OM,516:NA,524:NP,528:NL,540:NC,548:VU,554:NZ,558:NI,562:NE,566:NG,578:NO,583:FM,584:MH,585:PW,586:PK,591:PA,598:PG,600:PY,604:PE,608:PH,616:PL,620:PT,624:GW,626:TL,630:PR,634:QA,638:RE,642:RO,643:RU,646:RW,652:BL,659:KN,662:LC,670:VC,674:SM,678:ST,682:SA,686:SN,688:RS,690:SC,694:SL,702:SG,703:SK,704:VN,705:SI,706:SO,710:ZA,716:ZW,724:ES,728:SS,729:SD,732:EH,740:SR,748:SZ,752:SE,756:CH,760:SY,762:TJ,764:TH,768:TG,776:TO,780:TT,784:AE,788:TN,792:TR,795:TM,798:TV,800:UG,804:UA,807:MK,818:EG,826:GB,831:GG,832:JE,833:IM,834:TZ,840:US,850:VI,854:BF,858:UY,860:UZ,862:VE,882:WS,887:YE,894:ZM,383:XK';
+    const isoMap = {};
+    ISO.split(',').forEach(function (p) { const kv = p.split(':'); isoMap[kv[0]] = kv[1]; });
+    const NAME_ISO = { 'Kosovo': 'XK' };
+    function alpha2(feature) {
+      if (feature.id && isoMap[String(Number(feature.id))]) return isoMap[String(Number(feature.id))];
+      return NAME_ISO[feature.properties.name] || null;
+    }
+
+    function setup(canvas) {
+      canvas.width = SIZE * DPR; canvas.height = SIZE * DPR;
+      const ctx = canvas.getContext('2d'); ctx.scale(DPR, DPR); return ctx;
+    }
+    const stage = document.getElementById('stage');
+    const globeCanvas = document.getElementById('globe');
+    const whirlCanvas = document.getElementById('whirl');
+    const gctx = setup(globeCanvas);
+    const wctx = setup(whirlCanvas);
+
+    // ---- deep-space starfield (full viewport) ----
+    const spaceCanvas = document.getElementById('space');
+    const sctx = spaceCanvas.getContext('2d');
+    const SDPR = Math.min(window.devicePixelRatio || 1, 2);
+    let SW = 0, SH = 0, stars = [], meteors = [], lastSpaceT = 0, nextMeteor = 3;
+    const BAND_ANGLE = -0.42; // tilt of the milky-way band
+
+    // Planets as seen from Earth: bright, steady (non-twinkling) coloured points
+    // strung roughly along the ecliptic. col = naked-eye hue.
+    const planets = [
+      { name: 'Venus',   fx: 0.70,  fy: 0.15, r: 2.7, col: '255,246,216', bloom: 1.5, glint: true },
+      { name: 'Jupiter', fx: 0.86,  fy: 0.62, r: 2.4, col: '255,235,198', bloom: 1.25, glint: true },
+      { name: 'Saturn',  fx: 0.93,  fy: 0.22, r: 1.9, col: '236,214,158', bloom: 0.95, ring: true },
+      { name: 'Mars',    fx: 0.74,  fy: 0.80, r: 1.9, col: '255,148,104', bloom: 1.0, glint: true }
+    ];
+    function placePlanets() {
+      planets.forEach(function (p) { p.x = p.fx * SW; p.y = p.fy * SH; });
+    }
+
+    function buildStars() {
+      const count = Math.max(260, Math.round(SW * SH / 2400));
+      stars = [];
+      const ca = Math.cos(BAND_ANGLE + Math.PI / 2), sa = Math.sin(BAND_ANGLE + Math.PI / 2);
+      for (let i = 0; i < count; i++) {
+        const depth = Math.random();               // 0 far … 1 near (parallax)
+        const bright = Math.random() < 0.045;
+        let x, y;
+        if (Math.random() < 0.42) {
+          // cluster along the galactic band (gaussian-ish across its width)
+          const cx = Math.random() * SW;
+          const cy = SH * 0.52 + Math.tan(BAND_ANGLE) * (cx - SW * 0.5);
+          const off = ((Math.random() + Math.random() + Math.random()) / 3 - 0.5) * SH * 0.7;
+          x = cx + ca * off; y = cy + sa * off;
+        } else { x = Math.random() * SW; y = Math.random() * SH; }
+        x = ((x % SW) + SW) % SW;
+        stars.push({
+          x: x, y: y, z: depth,
+          r: 0.3 + depth * 1.1 + (bright ? 1.5 : 0),
+          a: 0.16 + Math.random() * 0.62,
+          tw: Math.random() < 0.7 ? 0.4 + Math.random() * 2.2 : 0, // some don't twinkle
+          ph: Math.random() * Math.PI * 2,
+          hue: Math.random() < 0.16 ? (Math.random() < 0.5 ? 212 : 32) : null,
+          glint: bright && Math.random() < 0.6
+        });
+      }
+    }
+    function resizeSpace() {
+      SW = window.innerWidth; SH = window.innerHeight;
+      spaceCanvas.width = SW * SDPR; spaceCanvas.height = SH * SDPR;
+      sctx.setTransform(SDPR, 0, 0, SDPR, 0, 0);
+      buildStars();
+      placePlanets();
+    }
+    function drawPlanet(p) {
+      const bloomR = p.r * 6 * p.bloom;
+      const g = sctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, bloomR);
+      g.addColorStop(0, 'rgba(' + p.col + ',0.55)');
+      g.addColorStop(0.3, 'rgba(' + p.col + ',0.16)');
+      g.addColorStop(1, 'rgba(' + p.col + ',0)');
+      sctx.fillStyle = g;
+      sctx.beginPath(); sctx.arc(p.x, p.y, bloomR, 0, Math.PI * 2); sctx.fill();
+      if (p.ring) {
+        sctx.save(); sctx.translate(p.x, p.y); sctx.rotate(-0.45); sctx.scale(1, 0.34);
+        sctx.strokeStyle = 'rgba(' + p.col + ',0.55)'; sctx.lineWidth = 0.9;
+        sctx.beginPath(); sctx.arc(0, 0, p.r * 2.7, 0, Math.PI * 2); sctx.stroke();
+        sctx.restore();
+      }
+      sctx.beginPath(); sctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      sctx.fillStyle = 'rgba(' + p.col + ',1)'; sctx.fill();
+      if (p.glint) {
+        const L = p.r * 4.6;
+        sctx.strokeStyle = 'rgba(' + p.col + ',0.45)'; sctx.lineWidth = 0.7;
+        sctx.beginPath();
+        sctx.moveTo(p.x - L, p.y); sctx.lineTo(p.x + L, p.y);
+        sctx.moveTo(p.x, p.y - L); sctx.lineTo(p.x, p.y + L);
+        sctx.stroke();
+      }
+    }
+    function drawNebula(t) {
+      // faint breathing galactic band behind the stars
+      sctx.save();
+      sctx.translate(SW * 0.5, SH * 0.52);
+      sctx.rotate(BAND_ANGLE);
+      sctx.scale(1, 0.22);
+      const pulse = 0.05 + 0.018 * Math.sin(t * 0.12);
+      const g = sctx.createRadialGradient(0, 0, 0, 0, 0, SW * 0.62);
+      g.addColorStop(0, 'rgba(150,165,225,' + pulse + ')');
+      g.addColorStop(0.45, 'rgba(110,95,165,' + (pulse * 0.55) + ')');
+      g.addColorStop(1, 'rgba(110,95,165,0)');
+      sctx.fillStyle = g;
+      sctx.beginPath(); sctx.arc(0, 0, SW * 0.62, 0, Math.PI * 2); sctx.fill();
+      sctx.restore();
+    }
+    function drawMeteor(m) {
+      const inLen = m.max * 0.18;
+      const al = (m.life < inLen ? m.life / inLen : 1 - (m.life - inLen) / (m.max - inLen));
+      const a = Math.max(0, Math.min(1, al));
+      const sp = Math.hypot(m.vx, m.vy);
+      const tx = m.x - (m.vx / sp) * m.len, ty = m.y - (m.vy / sp) * m.len;
+      const g = sctx.createLinearGradient(m.x, m.y, tx, ty);
+      g.addColorStop(0, 'rgba(255,255,255,' + (0.9 * a) + ')');
+      g.addColorStop(0.35, 'rgba(190,215,255,' + (0.34 * a) + ')');
+      g.addColorStop(1, 'rgba(190,215,255,0)');
+      sctx.strokeStyle = g; sctx.lineWidth = 1.6; sctx.lineCap = 'round';
+      sctx.beginPath(); sctx.moveTo(m.x, m.y); sctx.lineTo(tx, ty); sctx.stroke();
+      sctx.beginPath(); sctx.arc(m.x, m.y, 1.7, 0, Math.PI * 2);
+      sctx.fillStyle = 'rgba(255,255,255,' + a + ')'; sctx.fill();
+    }
+    function drawSpace(t) {
+      const dt = Math.min(0.05, lastSpaceT ? t - lastSpaceT : 0); lastSpaceT = t;
+      sctx.clearRect(0, 0, SW, SH);
+      drawNebula(t);
+      for (const s of stars) {
+        const tw = s.tw ? 0.6 + 0.4 * Math.sin(t * s.tw + s.ph) : 1;
+        const a = s.a * tw;
+        s.x += 0.003 + s.z * 0.032; if (s.x > SW + 3) s.x -= SW + 6; // parallax drift
+        if (s.r > 1.3) {
+          sctx.beginPath(); sctx.arc(s.x, s.y, s.r * 3.4, 0, Math.PI * 2);
+          sctx.fillStyle = 'rgba(170,200,255,' + (a * 0.12) + ')'; sctx.fill();
+        }
+        sctx.beginPath(); sctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        sctx.fillStyle = s.hue ? 'hsla(' + s.hue + ',80%,82%,' + a + ')' : 'rgba(255,255,255,' + a + ')';
+        sctx.fill();
+        if (s.glint) {
+          const L = s.r * 5.5;
+          sctx.strokeStyle = 'rgba(205,222,255,' + (a * 0.5) + ')'; sctx.lineWidth = 0.7;
+          sctx.beginPath();
+          sctx.moveTo(s.x - L, s.y); sctx.lineTo(s.x + L, s.y);
+          sctx.moveTo(s.x, s.y - L); sctx.lineTo(s.x, s.y + L);
+          sctx.stroke();
+        }
+      }
+      // planets — bright steady points along the ecliptic, drifting very slowly
+      for (const p of planets) {
+        p.x += 0.012; if (p.x > SW + 20) p.x -= SW + 40;
+        drawPlanet(p);
+      }
+      // occasional shooting stars
+      if (t > nextMeteor) {
+        const ang = Math.PI * (0.12 + Math.random() * 0.22), speed = 360 + Math.random() * 280;
+        meteors.push({ x: Math.random() * SW, y: Math.random() * SH * 0.45,
+          vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+          life: 0, max: 0.7 + Math.random() * 0.7, len: 90 + Math.random() * 90 });
+        nextMeteor = t + 3.5 + Math.random() * 7;
+      }
+      for (let i = meteors.length - 1; i >= 0; i--) {
+        const m = meteors[i]; m.life += dt; m.x += m.vx * dt; m.y += m.vy * dt;
+        if (m.life >= m.max || m.x > SW + 60 || m.y > SH + 60) { meteors.splice(i, 1); continue; }
+        drawMeteor(m);
+      }
+      // atmospheric halo bloom around the globe
+      const rect = stage.getBoundingClientRect();
+      const gx = rect.left + rect.width / 2, gy = rect.top + rect.height / 2;
+      const rad = Math.min(viewScale, SIZE / 2);
+      const halo = sctx.createRadialGradient(gx, gy, rad * 0.82, gx, gy, rad * 1.7);
+      halo.addColorStop(0, 'rgba(74,142,255,0)');
+      halo.addColorStop(0.5, 'rgba(86,152,255,0.18)');
+      halo.addColorStop(0.8, 'rgba(96,150,255,0.05)');
+      halo.addColorStop(1, 'rgba(96,150,255,0)');
+      sctx.fillStyle = halo;
+      sctx.beginPath(); sctx.arc(gx, gy, rad * 1.7, 0, Math.PI * 2); sctx.fill();
+    }
+    resizeSpace();
+    window.addEventListener('resize', resizeSpace);
+
+    const R = 150, CENTER = [SIZE / 2, SIZE / 2];
+    const projection = d3.geoOrthographic().scale(R).translate(CENTER).clipAngle(90).precision(0.4);
+    const path = d3.geoPath(projection, gctx);
+    const graticule = d3.geoGraticule10();
+    const sphere = { type: 'Sphere' };
+
+    // ---- realistic satellite texture (Blue Marble), reprojected onto the sphere ----
+    const DEG2RAD = Math.PI / 180;
+    let texData = null, texW = 0, texH = 0, texReady = false;
+    const earthBuf = document.createElement('canvas');
+    earthBuf.width = SIZE; earthBuf.height = SIZE;
+    const ebctx = earthBuf.getContext('2d');
+    const earthImgData = ebctx.createImageData(SIZE, SIZE);
+    (function loadEarthTexture() {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        texW = img.naturalWidth; texH = img.naturalHeight;
+        const tc = document.createElement('canvas');
+        tc.width = texW; tc.height = texH;
+        const tctx = tc.getContext('2d');
+        tctx.drawImage(img, 0, 0);
+        try { texData = tctx.getImageData(0, 0, texW, texH).data; texReady = true; }
+        catch (e) { texReady = false; }
+      };
+      img.onerror = function () { texReady = false; };
+      img.src = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
+    })();
+
+    // Inverse orthographic (gamma = 0): screen px -> lon/lat, sampling the texture.
+    function renderEarthTexture() {
+      const cx = CENTER[0], cy = CENTER[1], s = viewScale;
+      const rot = projection.rotate();
+      const lon0 = -rot[0] * DEG2RAD, lat0 = -rot[1] * DEG2RAD;
+      const sinLat0 = Math.sin(lat0), cosLat0 = Math.cos(lat0);
+      const x0 = Math.max(0, Math.floor(cx - s)), x1 = Math.min(SIZE, Math.ceil(cx + s));
+      const y0 = Math.max(0, Math.floor(cy - s)), y1 = Math.min(SIZE, Math.ceil(cy + s));
+      const od = earthImgData.data; od.fill(0);
+      const td = texData, tw = texW, th = texH;
+      for (let y = y0; y < y1; y++) {
+        const py = -(y - cy) / s;
+        for (let x = x0; x < x1; x++) {
+          const px = (x - cx) / s;
+          const rho2 = px * px + py * py;
+          if (rho2 > 1) continue;
+          const cosc = Math.sqrt(1 - rho2);
+          const lat = Math.asin(cosc * sinLat0 + py * cosLat0);
+          const lon = lon0 + Math.atan2(px, cosc * cosLat0 - py * sinLat0);
+          let lonDeg = lon / DEG2RAD;
+          lonDeg = ((lonDeg + 180) % 360 + 360) % 360 - 180;
+          const latDeg = lat / DEG2RAD;
+          let u = ((lonDeg + 180) / 360 * tw) | 0;
+          let v = ((90 - latDeg) / 180 * th) | 0;
+          if (u < 0) u = 0; else if (u >= tw) u = tw - 1;
+          if (v < 0) v = 0; else if (v >= th) v = th - 1;
+          const si = (v * tw + u) << 2;
+          const di = (y * SIZE + x) << 2;
+          od[di] = td[si]; od[di + 1] = td[si + 1]; od[di + 2] = td[si + 2]; od[di + 3] = 255;
+        }
+      }
+      ebctx.putImageData(earthImgData, 0, 0);
+      gctx.drawImage(earthBuf, 0, 0, SIZE, SIZE);
+    }
+
+    let countriesFC = null, selected = null, rotation = [0, -12, 0], viewScale = R;
+    let mode = 'world', regionsFC = null, selectedRegion = null, drillCountry = null;
+    let admin1FC = null, admin1Loading = null;
+
+    // ---- procedural weather (animated cloud systems) ----
+    let cloudDrift = 0, clockT = 0;
+    const clouds = [];
+    (function buildClouds() {
+      function puff(lon, lat, r, a, sw) { clouds.push({ lon: lon, lat: lat, r: r, a: a, sw: sw || null }); }
+      function band(lat0, latVar, n, sizeMin, sizeMax) {
+        for (let i = 0; i < n; i++) {
+          if (Math.random() < 0.22) continue; // gaps -> clumpy weather
+          const lon = Math.random() * 360 - 180;
+          const lat = lat0 + (Math.random() - 0.5) * latVar;
+          puff(lon, lat, sizeMin + Math.random() * (sizeMax - sizeMin), 0.4 + Math.random() * 0.5);
+        }
+      }
+      // tropical convergence band + mid-latitude storm tracks + scattered cloud
+      band(4, 16, 70, 6, 13);
+      band(48, 22, 55, 7, 15);
+      band(-50, 22, 55, 7, 15);
+      band(28, 30, 30, 5, 10);
+      band(-28, 30, 30, 5, 10);
+      // spiral cyclones (a clump of puffs wound into a storm spiral)
+      function cyclone(cx, cy, spin, scale) {
+        const arms = 2.4, steps = 26;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          puff(0, 0, (1 - t * 0.55) * 9 * scale, 0.55, { cx: cx, cy: cy, ang: t * Math.PI * 2 * arms, rad: t * 14 * scale, spin: spin });
+        }
+        puff(0, 0, 7 * scale, 0.6, { cx: cx, cy: cy, ang: 0, rad: 0, spin: spin });
+      }
+      cyclone(-42, 18, 0.18, 1.0);
+      cyclone(128, 14, 0.2, 1.1);
+      cyclone(82, -22, -0.16, 0.95);
+    })();
+
+    function drawClouds() {
+      if (!clouds.length) return;
+      const rot = projection.rotate();
+      const center = [-rot[0], -rot[1]];
+      const scale = viewScale / R;
+      gctx.save();
+      gctx.beginPath(); path(sphere); gctx.clip();
+      for (const c of clouds) {
+        let lon = c.lon, lat = c.lat;
+        if (c.sw) {
+          const ang = c.sw.ang + clockT * c.sw.spin;
+          lon = c.sw.cx + Math.cos(ang) * c.sw.rad;
+          lat = c.sw.cy + Math.sin(ang) * c.sw.rad * 0.72;
+        }
+        lon += cloudDrift;
+        if (lat > 85) lat = 85; else if (lat < -85) lat = -85;
+        const d = d3.geoDistance([lon, lat], center);
+        if (d >= Math.PI / 2 - 0.02) continue; // back hemisphere
+        const front = Math.cos(d);
+        const p = projection([lon, lat]);
+        if (!p) continue;
+        const rad = c.r * scale * (0.55 + front * 0.6);
+        const alpha = c.a * Math.min(1, (front - 0.04) * 1.7) * 0.32;
+        if (alpha <= 0) continue;
+        const g = gctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], rad);
+        g.addColorStop(0, 'rgba(255,255,255,' + alpha + ')');
+        g.addColorStop(0.55, 'rgba(245,248,255,' + (alpha * 0.45) + ')');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        gctx.fillStyle = g;
+        gctx.beginPath(); gctx.arc(p[0], p[1], rad, 0, Math.PI * 2); gctx.fill();
+      }
+      gctx.restore();
+    }
+
+    // ---- sun terminator (day/night shading on the sphere) ----
+    function drawTerminator() {
+      wctx.clearRect(0, 0, SIZE, SIZE);
+      const lx = CENTER[0] - viewScale * 0.5, ly = CENTER[1] - viewScale * 0.52;
+      gctx.save();
+      gctx.beginPath(); path(sphere); gctx.clip();
+      const g = gctx.createRadialGradient(lx, ly, viewScale * 0.15, lx, ly, viewScale * 2.05);
+      g.addColorStop(0, 'rgba(255,248,232,0.12)');
+      g.addColorStop(0.42, 'rgba(255,248,232,0)');
+      g.addColorStop(0.66, 'rgba(3,5,14,0)');
+      g.addColorStop(0.82, 'rgba(3,5,14,0.5)');
+      g.addColorStop(1, 'rgba(2,4,11,0.86)');
+      gctx.fillStyle = g; gctx.fillRect(0, 0, SIZE, SIZE);
+      gctx.restore();
+    }
+
+    // ---- globe ----
+    function drawGlobe() {
+      gctx.clearRect(0, 0, SIZE, SIZE);
+
+      gctx.beginPath(); path(sphere); gctx.fillStyle = OCEAN; gctx.fill();
+
+      if (mode === 'country' && regionsFC) {
+        // faint country context behind the regions
+        if (countriesFC) {
+          gctx.beginPath();
+          countriesFC.features.forEach(function (f) { path(f); });
+          gctx.fillStyle = '#d2cec3'; gctx.fill();
+        }
+        // colored regions
+        regionsFC.features.forEach(function (f) {
+          gctx.beginPath(); path(f);
+          gctx.fillStyle = f === selectedRegion ? brighten(f._color) : f._color;
+          gctx.fill();
+        });
+        gctx.beginPath();
+        regionsFC.features.forEach(function (f) { path(f); });
+        gctx.strokeStyle = 'rgba(255,255,255,0.6)'; gctx.lineWidth = 0.6; gctx.stroke();
+        // outline the drilled country
+        if (drillCountry) {
+          gctx.beginPath(); path(drillCountry);
+          gctx.strokeStyle = INK; gctx.globalAlpha = 0.45; gctx.lineWidth = 1; gctx.stroke();
+          gctx.globalAlpha = 1;
+        }
+        if (selectedRegion) {
+          gctx.beginPath(); path(selectedRegion);
+          gctx.strokeStyle = '#ffffff'; gctx.lineWidth = 3; gctx.stroke();
+          gctx.beginPath(); path(selectedRegion);
+          gctx.strokeStyle = INK; gctx.lineWidth = 1.4; gctx.stroke();
+        }
+      } else if (texReady) {
+        // photographic satellite earth
+        gctx.save();
+        gctx.beginPath(); path(sphere); gctx.clip();
+        renderEarthTexture();
+        gctx.restore();
+
+        gctx.beginPath(); path(graticule);
+        gctx.strokeStyle = '#ffffff'; gctx.globalAlpha = 0.06; gctx.lineWidth = 0.5;
+        gctx.stroke(); gctx.globalAlpha = 1;
+
+        if (selected) {
+          gctx.beginPath(); path(selected);
+          gctx.strokeStyle = '#ffffff'; gctx.lineWidth = 2.6; gctx.stroke();
+          gctx.beginPath(); path(selected);
+          gctx.strokeStyle = INK; gctx.lineWidth = 1.2; gctx.stroke();
+        }
+      } else if (countriesFC) {
+        // fallback before the texture loads: natural land tones, not political colors
+        countriesFC.features.forEach(function (f) {
+          gctx.beginPath(); path(f);
+          gctx.fillStyle = f === selected ? '#6f8a52' : LAND;
+          gctx.fill();
+        });
+        gctx.beginPath();
+        countriesFC.features.forEach(function (f) { path(f); });
+        gctx.strokeStyle = 'rgba(40,60,30,0.35)'; gctx.lineWidth = 0.4; gctx.stroke();
+
+        gctx.beginPath(); path(graticule);
+        gctx.strokeStyle = '#ffffff'; gctx.globalAlpha = 0.08; gctx.lineWidth = 0.5;
+        gctx.stroke(); gctx.globalAlpha = 1;
+
+        if (selected) {
+          gctx.beginPath(); path(selected);
+          gctx.strokeStyle = '#ffffff'; gctx.lineWidth = 3.2; gctx.stroke();
+          gctx.beginPath(); path(selected);
+          gctx.strokeStyle = INK; gctx.lineWidth = 1.4; gctx.stroke();
+        }
+      }
+
+      // animated cloud systems, then day/night shading + atmospheric rim
+      drawClouds();
+      drawTerminator();
+      gctx.save();
+      gctx.beginPath(); path(sphere);
+      gctx.strokeStyle = 'rgba(150,200,255,0.55)'; gctx.lineWidth = 1.5;
+      gctx.shadowColor = 'rgba(120,190,255,0.9)'; gctx.shadowBlur = 9;
+      gctx.stroke();
+      gctx.shadowBlur = 0;
+      gctx.beginPath(); path(sphere);
+      gctx.strokeStyle = OCEAN_RIM; gctx.lineWidth = 0.8; gctx.stroke();
+      gctx.restore();
+    }
+    function brighten(hex) {
+      const c = d3.color(hex); if (!c) return hex;
+      return c.brighter(0.55).formatHex();
+    }
+
+    // ---- loop ----
+    let start = null, autoSpin = true, spinAccum = 0, lastTs = null;
+    function frame(ts) {
+      if (start === null) start = ts;
+      if (lastTs === null) lastTs = ts;
+      if (SW !== window.innerWidth || SH !== window.innerHeight) resizeSpace();
+      const dt = (ts - lastTs) / 1000; lastTs = ts;
+      const elapsed = (ts - start) / 1000;
+      if (autoSpin) spinAccum += dt * 16;
+      clockT = elapsed; cloudDrift += dt * 0.7;
+      projection.scale(viewScale);
+      projection.rotate([rotation[0] + spinAccum, rotation[1], rotation[2]]);
+      drawSpace(elapsed); drawGlobe();
+      requestAnimationFrame(frame);
+    }
+    projection.rotate(rotation); drawSpace(0); drawGlobe();
+    requestAnimationFrame(frame);
+
+    // ---- fly: animate rotation (and optionally zoom) together ----
+    let tween = null;
+    function flyTo(lon, lat, scale) {
+      autoSpin = false;
+      const fromRot = [rotation[0] + spinAccum, rotation[1], rotation[2]];
+      const interp = d3.interpolate(fromRot, [-lon, -lat, 0]);
+      const fromScale = viewScale, toScale = (scale == null) ? viewScale : scale;
+      const t0 = performance.now(), dur = 800;
+      cancelAnimationFrame(tween);
+      function step(now) {
+        const k = Math.min(1, (now - t0) / dur), e = d3.easeCubicInOut(k);
+        const r = interp(e);
+        rotation = [r[0], r[1], r[2]]; spinAccum = 0;
+        viewScale = fromScale + (toScale - fromScale) * e;
+        if (k < 1) tween = requestAnimationFrame(step);
+      }
+      tween = requestAnimationFrame(step);
+    }
+
+    // Scale needed to frame a feature within the viewport (orthographic).
+    function fitScale(feature) {
+      const c = d3.geoCentroid(feature);
+      const tmp = d3.geoOrthographic().translate(CENTER).scale(R).rotate([-c[0], -c[1], 0]).clipAngle(90);
+      const b = d3.geoPath(tmp).bounds(feature);
+      const w = b[1][0] - b[0][0], h = b[1][1] - b[0][1];
+      if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return R * 3;
+      const k = Math.min(SIZE * 0.62 / w, SIZE * 0.62 / h);
+      return Math.max(R, Math.min(R * k, R * 12));
+    }
+
+    // ---- interaction ----
+    let down = null, moved = 0, dragging = false;
+    stage.addEventListener('pointerdown', function (e) {
+      // Ignore presses that start on the overlay buttons (Back / loading) so
+      // their native click fires and the globe doesn't capture the pointer.
+      if (e.target.closest('.backbtn, .loading')) return;
+      autoSpin = false;
+      rotation = [rotation[0] + spinAccum, rotation[1], rotation[2]]; spinAccum = 0;
+      down = { x: e.clientX, y: e.clientY }; moved = 0; dragging = false;
+      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    stage.addEventListener('pointermove', function (e) {
+      if (!down) return;
+      const dx = e.clientX - down.x, dy = e.clientY - down.y;
+      moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+      if (moved > 4 && !dragging) { dragging = true; stage.classList.add('dragging'); }
+      if (dragging) {
+        const k = 0.35;
+        rotation[0] += dx * k;
+        rotation[1] = Math.max(-90, Math.min(90, rotation[1] - dy * k));
+        down = { x: e.clientX, y: e.clientY };
+      }
+    });
+    stage.addEventListener('pointerup', function (e) {
+      stage.classList.remove('dragging');
+      const wasClick = down && moved <= 4; down = null;
+      if (wasClick) handleClick(e);
+    });
+
+    function handleClick(e) {
+      const rect = globeCanvas.getBoundingClientRect();
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      const dxc = px - CENTER[0], dyc = py - CENTER[1];
+      if (Math.sqrt(dxc * dxc + dyc * dyc) > viewScale) return;
+      const geo = projection.invert([px, py]);
+      if (!geo || isNaN(geo[0])) return;
+
+      if (mode === 'country' && regionsFC) {
+        let hit = null;
+        for (const f of regionsFC.features) { if (d3.geoContains(f, geo)) { hit = f; break; } }
+        if (hit) { selectedRegion = hit; showRegion(hit, drillCountry); }
+        return;
+      }
+
+      if (!countriesFC) return;
+      let hit = null;
+      for (const f of countriesFC.features) { if (d3.geoContains(f, geo)) { hit = f; break; } }
+      if (hit) {
+        selected = hit;
+        const c = d3.geoCentroid(hit);
+        flyTo(c[0], c[1]);
+        showCountry(hit);
+      }
+    }
+
+    // ---- drill into a country's states / provinces ----
+    function ensureAdmin1() {
+      if (admin1FC) return Promise.resolve(admin1FC);
+      if (admin1Loading) return admin1Loading;
+      loadingEl.hidden = false; loadingEl.textContent = 'Loading regions…';
+      admin1Loading = fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson')
+        .then(function (r) { return r.json(); })
+        .then(function (j) { admin1FC = j; loadingEl.hidden = true; return j; })
+        .catch(function (e) { loadingEl.hidden = true; admin1Loading = null; throw e; });
+      return admin1Loading;
+    }
+
+    function enterCountry(country) {
+      if (!country) return;
+      ensureAdmin1().then(function (fc) {
+        const code = alpha2(country);
+        const cname = country.properties.name;
+        let regs = fc.features.filter(function (f) { return (f.properties.iso_3166_2 || '').split('-')[0] === code; });
+        if (!regs.length) regs = fc.features.filter(function (f) { return f.properties.iso_a2 === code; });
+        if (!regs.length) regs = fc.features.filter(function (f) { return f.properties.admin === cname; });
+        if (!regs.length) { flashMsg('No state / province data for ' + cname); return; }
+        regs.forEach(function (r) { r._color = colorFor(r.properties.name || r.properties.name_en || r.properties.iso_3166_2 || 'x'); });
+        regionsFC = { type: 'FeatureCollection', features: regs };
+        drillCountry = country; selectedRegion = null; mode = 'country';
+        backEl.hidden = false; zoomEl.hidden = true;
+        cardEl.classList.remove('show');
+        hintEl.style.display = ''; hintEl.innerHTML = '<span class="dot"></span>Click a state or province in ' + esc(cname);
+        const c = d3.geoCentroid(country);
+        flyTo(c[0], c[1], fitScale(country));
+      }).catch(function () { flashMsg('Could not load region data. Try again.'); });
+    }
+
+    function exitToWorld() {
+      mode = 'world'; regionsFC = null; selectedRegion = null;
+      backEl.hidden = true; loadingEl.hidden = true;
+      const country = drillCountry;
+      if (country) {
+        selected = country;
+        const c = d3.geoCentroid(country);
+        flyTo(c[0], c[1], R);
+        showCountry(country);
+      } else {
+        flyTo(-rotation[0], -rotation[1], R);
+      }
+    }
+
+    function flashMsg(msg) {
+      loadingEl.hidden = false; loadingEl.textContent = msg;
+      setTimeout(function () { loadingEl.hidden = true; }, 2200);
+    }
+
+    // ---- panel ----
+    const hintEl = document.getElementById('hint');
+    const cardEl = document.getElementById('card');
+    const eyebrowEl = document.getElementById('eyebrow');
+    const flagEl = document.getElementById('flag');
+    const nameEl = document.getElementById('name');
+    const capEl = document.getElementById('capital');
+    const leaderEl = document.getElementById('leader');
+    const bioWrap = document.getElementById('bioWrap');
+    const backEl = document.getElementById('back');
+    const zoomEl = document.getElementById('zoom');
+    const loadingEl = document.getElementById('loading');
+    backEl.addEventListener('click', exitToWorld);
+    zoomEl.addEventListener('click', function () { if (selected) enterCountry(selected); });
+
+    function setFlag(url, alt) {
+      flagEl.classList.remove('show');
+      if (url) {
+        flagEl.onload = function () { flagEl.classList.add('show'); };
+        flagEl.onerror = function () { flagEl.classList.remove('show'); flagEl.style.display = 'none'; };
+        flagEl.src = url; flagEl.alt = alt || ''; flagEl.style.display = '';
+      } else { flagEl.style.display = 'none'; }
+    }
+
+    let reqId = 0;
+    function showCountry(f) {
+      const id = ++reqId;
+      const name = f.properties.name;
+      hintEl.style.display = 'none';
+      cardEl.classList.add('show');
+      eyebrowEl.textContent = 'Country';
+      nameEl.textContent = name;
+
+      // flag
+      const code = alpha2(f);
+      setFlag(code ? 'https://flagcdn.com/w160/' + code.toLowerCase() + '.png' : null, name + ' flag');
+      zoomEl.hidden = false;
+
+      // reset fields
+      capEl.textContent = '…';
+      leaderEl.innerHTML = '<span class="muted">…</span>';
+      bioWrap.innerHTML = '<div class="skeleton"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>';
+
+      // ---- live facts (capital + current leaders) from Wikidata ----
+      fetchFacts(code, name).then(function (facts) {
+        if (id !== reqId) return;
+        capEl.textContent = facts.capital || '—';
+        renderLeaders(facts.leaders);
+      });
+
+      // ---- bio (stable) from Claude ----
+      const prompt = 'In exactly 2 vivid sentences, describe what the country "' + name
+        + '" is best known for — geography, culture, or a notable fact. Plain text, no preamble, no markdown.';
+      window.claude.complete(prompt).then(function (text) {
+        if (id !== reqId) return;
+        bioWrap.innerHTML = '<p class="bio"></p>';
+        bioWrap.querySelector('.bio').textContent = (text || '').trim();
+      }).catch(function () {
+        if (id !== reqId) return;
+        bioWrap.innerHTML = '<p class="bio"></p>';
+        bioWrap.querySelector('.bio').textContent = 'Could not load a description right now.';
+      });
+    }
+
+    function renderLeaders(leaders) {
+      if (!leaders || !leaders.length) { leaderEl.innerHTML = '<span class="muted">Not available</span>'; return; }
+      leaderEl.innerHTML = leaders.map(function (l) {
+        return '<span class="ldr">' + esc(l.name) + '<small>' + esc(l.role) + '</small></span>';
+      }).join('');
+    }
+
+    // ---- region (state / province) info ----
+    function showRegion(feature, country) {
+      const id = ++reqId;
+      const p = feature.properties;
+      const name = p.name || p.name_en || p.iso_3166_2 || 'Region';
+      const type = p.type_en || p.type || 'region';
+      hintEl.style.display = 'none';
+      cardEl.classList.add('show');
+      eyebrowEl.textContent = (country ? country.properties.name + ' · ' : '') + cap1(type);
+      nameEl.textContent = name;
+      zoomEl.hidden = true;
+      setFlag(null);
+      capEl.textContent = '…';
+      leaderEl.innerHTML = '<span class="muted">…</span>';
+      bioWrap.innerHTML = '<div class="skeleton"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>';
+
+      fetchRegionFacts(feature).then(function (facts) {
+        if (id !== reqId) return;
+        capEl.textContent = facts.capital || '—';
+        renderLeaders(facts.leaders);
+        if (facts.flag) setFlag(facts.flag, name + ' flag');
+      });
+
+      const prompt = 'In exactly 2 vivid sentences, describe the ' + type + ' of ' + name
+        + (country ? ' in ' + country.properties.name : '') + ' — what it is known for. Plain text, no preamble, no markdown.';
+      window.claude.complete(prompt).then(function (text) {
+        if (id !== reqId) return;
+        bioWrap.innerHTML = '<p class="bio"></p>';
+        bioWrap.querySelector('.bio').textContent = (text || '').trim();
+      }).catch(function () {
+        if (id !== reqId) return;
+        bioWrap.innerHTML = '<p class="bio"></p>';
+        bioWrap.querySelector('.bio').textContent = 'Could not load a description right now.';
+      });
+    }
+    function cap1(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+    // Query Wikidata for a subdivision: capital, head of government, office title, flag.
+    function fetchRegionFacts(feature) {
+      const qid = feature.properties.wikidataid;
+      const iso = feature.properties.iso_3166_2;
+      let selector = null;
+      if (qid && /^Q\d+$/.test(qid)) selector = 'BIND(wd:' + qid + ' AS ?r)';
+      else if (iso) selector = '?r wdt:P300 "' + iso + '".';
+      if (!selector) return Promise.resolve({ capital: null, leaders: [], flag: null });
+      const q = 'SELECT ?capLabel ?hog ?hogLabel ?officeLabel ?flag WHERE { ' + selector
+        + ' OPTIONAL { ?r wdt:P36 ?cap. } OPTIONAL { ?r wdt:P6 ?hog. }'
+        + ' OPTIONAL { ?r wdt:P1313 ?office. } OPTIONAL { ?r wdt:P41 ?flag. }'
+        + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul,es,fr,de,pt". } } LIMIT 1';
+      const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q);
+      return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const b = (j.results.bindings || [])[0] || {};
+          const v = function (k) { return b[k] && b[k].value; };
+          const hog = v('hogLabel'), office = v('officeLabel');
+          const leaders = hog ? [{ name: hog, role: (office && !isQid(office)) ? office : 'Head of government' }] : [];
+          let flag = v('flag');
+          if (flag) flag = flag.replace(/^http:/, 'https:') + '?width=160';
+          const facts = { capital: v('capLabel'), leaders: leaders, flag: flag || null };
+          return Promise.resolve(resolveQids(facts)).then(function (rf) { rf.flag = facts.flag; return rf; });
+        })
+        .catch(function () { return { capital: null, leaders: [], flag: null }; });
+    }
+
+    // Query Wikidata for the country's capital + current head of state / government.
+    // Wikidata is community-maintained and near-real-time; we never fall back to
+    // model knowledge for leaders, since that can be out of date.
+    function fetchFacts(code, name) {
+      if (!code) return Promise.resolve({ capital: null, leaders: [] });
+      const q = 'SELECT ?capLabel ?hos ?hosLabel ?hog ?hogLabel WHERE {'
+        + ' ?c wdt:P297 "' + code + '".'
+        + ' OPTIONAL { ?c wdt:P36 ?cap. }'
+        + ' OPTIONAL { ?c wdt:P35 ?hos. }'
+        + ' OPTIONAL { ?c wdt:P6 ?hog. }'
+        + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul,es,fr,de,pt". }'
+        + ' } LIMIT 1';
+      const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q);
+      return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const b = (j.results.bindings || [])[0] || {};
+          const val = function (k) { return b[k] && b[k].value; };
+          const hos = val('hos'), hog = val('hog');
+          const hosName = val('hosLabel'), hogName = val('hogLabel');
+          const leaders = [];
+          if (hosName) {
+            if (hog && hos === hog) leaders.push({ name: hosName, role: 'Head of state & government' });
+            else leaders.push({ name: hosName, role: 'Head of state' });
+          }
+          if (hogName && hog !== hos) leaders.push({ name: hogName, role: 'Head of government' });
+          return resolveQids({ capital: val('capLabel'), leaders: leaders });
+        })
+        .catch(function () { return { capital: null, leaders: [] }; });
+    }
+
+    // Any value that came back as a bare QID (no label in our languages) is
+    // resolved to a real name via the entity API, so we never drop or guess it.
+    function isQid(s) { return /^Q\d+$/.test(s || ''); }
+    function resolveQids(facts) {
+      const ids = [];
+      if (isQid(facts.capital)) ids.push(facts.capital);
+      facts.leaders.forEach(function (l) { if (isQid(l.name)) ids.push(l.name); });
+      if (!ids.length) return facts;
+      const url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&props=labels'
+        + '&languages=en&format=json&origin=*&ids=' + ids.join('|');
+      return fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+        const lbl = function (qid) {
+          const e = j.entities && j.entities[qid];
+          return (e && e.labels && e.labels.en && e.labels.en.value) || null;
+        };
+        if (isQid(facts.capital)) facts.capital = lbl(facts.capital) || null;
+        facts.leaders = facts.leaders.map(function (l) {
+          return isQid(l.name) ? { name: lbl(l.name) || null, role: l.role } : l;
+        }).filter(function (l) { return l.name; });
+        return facts;
+      }).catch(function () {
+        // strip anything still unresolved rather than show a QID
+        if (isQid(facts.capital)) facts.capital = null;
+        facts.leaders = facts.leaders.filter(function (l) { return !isQid(l.name); });
+        return facts;
+      });
+    }
+
+    function parseJSON(text) {
+      try { return JSON.parse(text); } catch (_) {}
+      const m = text && text.match(/\{[\s\S]*\}/);
+      if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
+      return null;
+    }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    // ---- data ----
+    fetch('https://unpkg.com/world-atlas@2.0.2/countries-110m.json')
+      .then(function (r) { return r.json(); })
+      .then(function (world) {
+        countriesFC = topojson.feature(world, world.objects.countries);
+        countriesFC.features.forEach(function (f) { f._color = colorFor(f.properties.name); });
+        drawGlobe();
+      })
+      .catch(function (e) { console.error('map load failed', e); });
+  })();
+  </script>
+</body>
+</html>

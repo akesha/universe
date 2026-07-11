@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Milky Way's Journey Through the Local Group</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #eef0f6;
+    --ink-soft: #98a0b3;
+    --line: rgba(255,255,255,0.16);
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+    --accent: #8fb8ff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1300px 900px at 50% 50%, rgba(40,46,86,0.20), transparent 70%),
+      #03040a;
+  }
+  #space { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; }
+
+  .caption { position: fixed; top: 30px; left: 34px; z-index: 2; max-width: 390px; pointer-events: none; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 10px;
+  }
+  .caption h1 {
+    font-family: "Spectral", Georgia, serif; font-weight: 500;
+    font-size: 30px; line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.01em;
+  }
+  .note {
+    font-family: var(--mono); font-size: 11px; line-height: 1.6; letter-spacing: 0.02em;
+    color: var(--ink-soft); margin: 0; max-width: 330px;
+  }
+
+  #controls {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); z-index: 3;
+    display: flex; align-items: center; gap: 18px;
+    background: rgba(10,14,24,0.6); border: 1px solid var(--line);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    padding: 10px 16px; border-radius: 100px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; color: var(--ink-soft);
+  }
+  #controls .grp { display: flex; align-items: center; gap: 8px; }
+  #controls .sep { width: 1px; height: 18px; background: var(--line); }
+  #playpause {
+    appearance: none; cursor: pointer; border: 1px solid var(--line);
+    background: transparent; color: var(--ink);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 100px; transition: background .15s, color .15s;
+  }
+  #playpause:hover { background: var(--ink); color: #05070d; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; height: 3px; width: 116px;
+    background: var(--line); border-radius: 3px; outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; box-shadow: 0 0 8px rgba(143,184,255,.6);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 13px; height: 13px; border: none; border-radius: 50%; background: var(--accent); cursor: pointer;
+  }
+  #spd { color: var(--ink); min-width: 30px; display: inline-block; }
+  .chk { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .chk input { accent-color: var(--accent); cursor: pointer; }
+
+  .mwtag {
+    position: fixed; z-index: 4; pointer-events: none; white-space: nowrap;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--accent);
+    background: rgba(12,18,34,0.74); border: 1px solid rgba(143,184,255,0.4);
+    padding: 4px 9px; border-radius: 100px; transform: translateY(-50%);
+    animation: bob 2.2s ease-in-out infinite;
+  }
+  @keyframes bob { 0%,100% { opacity: .72; } 50% { opacity: 1; } }
+
+  #galaxyView { position: fixed; inset: 0; z-index: 20; opacity: 0; display: none; pointer-events: none; background: #04050a; }
+  #galaxyView.active { pointer-events: auto; }
+  #galaxyView iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #04050a; }
+  #backToGroup {
+    position: absolute; top: 18px; right: 18px; z-index: 21;
+    appearance: none; cursor: pointer; border: 1px solid var(--line);
+    background: rgba(10,14,24,0.7); color: var(--ink);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+    padding: 9px 14px; border-radius: 100px; transition: border-color .15s;
+  }
+  #backToGroup:hover { border-color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .caption h1 { font-size: 23px; }
+    #controls { gap: 12px; padding: 9px 12px; flex-wrap: wrap; max-width: 92vw; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<nav id="universe-nav" style="position:fixed;top:18px;right:20px;z-index:9999;display:flex;gap:6px;font-family:ui-monospace,SF Mono,Cascadia Mono,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;"><style>#universe-nav a{color:#98a0b3;text-decoration:none;padding:5px 11px;background:rgba(10,14,24,0.65);border:1px solid rgba(255,255,255,0.14);border-radius:100px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:color .15s}#universe-nav a:hover,#universe-nav a.active{color:#eef0f6}</style><a href="index.html">Milky Way</a><a href="local-group.html" class="active">Local Group</a><a href="solar-system.html">Solar System</a><a href="globe.html">Globe</a></nav>
+  <canvas id="space"></canvas>
+
+  <div class="caption">
+    <p class="eyebrow">Our cosmic neighbourhood</p>
+    <h1>The Milky Way&rsquo;s journey through the Local Group</h1>
+    <p class="note">Two great spirals &mdash; the Milky Way and Andromeda &mdash; fall toward each other across 2.5 million light-years at ~110 km/s, set to merge in ~4.5 billion years. The whole group streams through space at ~600 km/s.</p>
+  </div>
+
+  <div id="mwTag" class="mwtag">Click the Milky Way to zoom in &rarr;</div>
+
+  <div id="controls">
+    <button id="playpause" type="button">Pause</button>
+    <div class="sep"></div>
+    <div class="grp">Speed <input id="speed" type="range" min="0.2" max="8" step="0.1" value="1"><span id="spd">1.0&times;</span></div>
+    <div class="sep"></div>
+    <label class="chk"><input id="vectors" type="checkbox" checked> Motion</label>
+  </div>
+
+  <div id="galaxyView">
+    <iframe id="galaxyFrame" title="The Milky Way galaxy" loading="lazy"></iframe>
+    <button id="backToGroup" type="button">&lsaquo; Back to the Local Group</button>
+  </div>
+
+  <script>
+  (function () {
+    const canvas = document.getElementById('space');
+    const ctx = canvas.getContext('2d');
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    let SW = 0, SH = 0, minD = 0, bgStars = [], farGalaxies = [];
+
+    // The big members of the Local Group. rf = radius as fraction of min(viewport).
+    const galaxies = [
+      { name: 'Milky Way', rf: 0.20, fx: 0.39, fy: 0.62, tilt: 0.60, orient: -0.45, spin: 0.022, bias: 'blue', me: true },
+      { name: 'Andromeda (M31)', rf: 0.31, fx: 0.66, fy: 0.36, tilt: 0.30, orient: 0.72, spin: -0.018, bias: 'warm' },
+      { name: 'Triangulum (M33)', rf: 0.105, fx: 0.84, fy: 0.62, tilt: 0.52, orient: 0.25, spin: 0.028, bias: 'blue' }
+    ];
+
+    function buildSpiral(radius, bias) {
+      const px = Math.max(2, Math.ceil(radius * 2 * DPR));
+      const oc = document.createElement('canvas'); oc.width = px; oc.height = px;
+      const o = oc.getContext('2d'); o.setTransform(DPR, 0, 0, DPR, 0, 0);
+      const C = radius;
+      const bulge = o.createRadialGradient(C, C, 0, C, C, radius * 0.46);
+      bulge.addColorStop(0, 'rgba(255,242,206,0.95)');
+      bulge.addColorStop(0.18, 'rgba(255,222,150,0.5)');
+      bulge.addColorStop(0.5, 'rgba(220,160,120,0.1)');
+      bulge.addColorStop(1, 'rgba(220,160,120,0)');
+      o.fillStyle = bulge; o.beginPath(); o.arc(C, C, radius * 0.46, 0, Math.PI * 2); o.fill();
+      const arms = 2, innerR = radius * 0.055, b = 0.33;
+      const thetaMax = Math.log(radius / innerR) / b;
+      const N = Math.round(radius * 11);
+      for (let i = 0; i < N; i++) {
+        const arm = i % arms;
+        const u = Math.pow(Math.random(), 0.6);
+        let th = u * thetaMax;
+        const r = innerR * Math.exp(b * th);
+        th += arm * Math.PI * 2 / arms + (Math.random() - 0.5) * 0.5;
+        const spread = r * (0.06 + Math.random() * 0.08);
+        const x = C + Math.cos(th) * r + (Math.random() * 2 - 1) * spread;
+        const y = C + Math.sin(th) * r + (Math.random() * 2 - 1) * spread;
+        if (x < 0 || y < 0 || x > radius * 2 || y > radius * 2) continue;
+        const tt = r / radius, rnd = Math.random();
+        let col;
+        if (rnd < 0.07) col = 'rgba(255,176,198,';
+        else if (tt < 0.32) col = 'rgba(255,' + (224 - (tt * 70 | 0)) + ',' + (172 - (tt * 70 | 0)) + ',';
+        else if (bias === 'warm') col = (Math.random() < 0.5 ? 'rgba(255,214,170,' : 'rgba(255,232,200,');
+        else col = (Math.random() < 0.5 ? 'rgba(168,198,255,' : 'rgba(222,232,255,');
+        const a = 0.45 + Math.random() * 0.5;
+        const rad = rnd < 0.05 ? 1.6 : 0.6 + Math.random() * 0.6;
+        o.beginPath(); o.arc(x, y, rad, 0, Math.PI * 2); o.fillStyle = col + a + ')'; o.fill();
+      }
+      return oc;
+    }
+
+    function buildBgStars() {
+      const n = Math.max(120, Math.round(SW * SH / 6000));
+      bgStars = [];
+      for (let i = 0; i < n; i++) bgStars.push({
+        x: Math.random() * SW, y: Math.random() * SH,
+        r: 0.3 + Math.random() * 0.8, a: 0.12 + Math.random() * 0.4,
+        tw: Math.random() < 0.5 ? 0.4 + Math.random() * 1.6 : 0, ph: Math.random() * Math.PI * 2
+      });
+      // faint distant galaxies that stream past as the group moves
+      farGalaxies = [];
+      const m = Math.max(26, Math.round(SW * SH / 42000));
+      for (let i = 0; i < m; i++) farGalaxies.push({
+        x: Math.random() * SW, y: Math.random() * SH,
+        rx: 4 + Math.random() * 9, ry: (0.3 + Math.random() * 0.5),
+        ang: Math.random() * Math.PI, a: 0.05 + Math.random() * 0.10,
+        warm: Math.random() < 0.5
+      });
+    }
+
+    function resize() {
+      SW = window.innerWidth; SH = window.innerHeight;
+      canvas.width = SW * DPR; canvas.height = SH * DPR;
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      minD = Math.min(SW, SH);
+      galaxies.forEach(function (g) { g.img = buildSpiral(g.rf * minD, g.bias); g.R = g.rf * minD; });
+      buildBgStars();
+    }
+    window.addEventListener('resize', resize);
+
+    // base + animated position of a galaxy (slow mutual drift along the MW-Andromeda axis)
+    function galPos(g, t) {
+      const bx = g.fx * SW, by = g.fy * SH;
+      const breathe = Math.sin(t * 0.12) * 0.5 + 0.5; // 0..1
+      const k = g.me ? 1 : (g.name.indexOf('Andromeda') === 0 ? 1 : 0.4);
+      // drift Milky Way & Andromeda gently toward the midpoint
+      const mid = { x: (galaxies[0].fx + galaxies[1].fx) / 2 * SW, y: (galaxies[0].fy + galaxies[1].fy) / 2 * SH };
+      const dx = mid.x - bx, dy = mid.y - by;
+      const amt = (1 - breathe) * 0.06 * k;
+      return { x: bx + dx * amt + groupDX, y: by + dy * amt + groupDY };
+    }
+
+    function drawGalaxy(g, pos) {
+      if (!g.img || !g.img.width) return;
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(g.orient);
+      ctx.scale(1, g.tilt);
+      ctx.rotate(g.spinAngle);
+      ctx.globalAlpha = 0.5; ctx.drawImage(g.img, -g.R, -g.R, g.R * 2, g.R * 2);
+      ctx.globalAlpha = 1; ctx.drawImage(g.img, -g.R, -g.R, g.R * 2, g.R * 2);
+      ctx.restore();
+      // bright nucleus
+      const core = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, g.R * 0.14);
+      core.addColorStop(0, 'rgba(255,247,222,0.85)');
+      core.addColorStop(1, 'rgba(255,232,176,0)');
+      ctx.fillStyle = core; ctx.beginPath(); ctx.arc(pos.x, pos.y, g.R * 0.14, 0, Math.PI * 2); ctx.fill();
+    }
+
+    function arrow(x1, y1, x2, y2, color, label) {
+      ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      const a = Math.atan2(y2 - y1, x2 - x1), h = 9;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - h * Math.cos(a - 0.4), y2 - h * Math.sin(a - 0.4));
+      ctx.lineTo(x2 - h * Math.cos(a + 0.4), y2 - h * Math.sin(a + 0.4));
+      ctx.closePath(); ctx.fill();
+      if (label) {
+        ctx.save();
+        ctx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = color;
+        ctx.fillText(label, (x1 + x2) / 2, (y1 + y2) / 2 - 9);
+        ctx.restore();
+      }
+    }
+
+    function label(text, x, y, color) {
+      ctx.save();
+      ctx.font = '11px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 6;
+      ctx.fillStyle = color || 'rgba(210,218,235,0.85)';
+      ctx.fillText(text, x, y);
+      ctx.restore();
+    }
+
+    // ---- state ----
+    let last = null, playing = true, speed = 1, showVectors = true;
+    let groupDX = 0, groupDY = 0, drift = 0;
+    let state = 'group', zoomT = 0;
+    const ZOOM_MAX = 70, ZOOM_IN = 1.2, ZOOM_OUT = 0.95;
+    const gv = document.getElementById('galaxyView');
+    const gf = document.getElementById('galaxyFrame');
+    const tag = document.getElementById('mwTag');
+    galaxies.forEach(function (g) { g.spinAngle = Math.random() * Math.PI * 2; });
+    function easeIO(k) { return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; }
+    function smooth(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+
+    function drawFar() {
+      for (const f of farGalaxies) {
+        let x = (f.x - drift * 0.4) % SW; if (x < 0) x += SW;
+        ctx.save();
+        ctx.translate(x, f.y); ctx.rotate(f.ang); ctx.scale(1, f.ry);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, f.rx);
+        const c = f.warm ? '255,210,170' : '190,205,255';
+        g.addColorStop(0, 'rgba(' + c + ',' + (f.a * 2.2) + ')');
+        g.addColorStop(1, 'rgba(' + c + ',0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, f.rx, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+    function drawBgStars(t) {
+      for (const s of bgStars) {
+        const tw = s.tw ? 0.6 + 0.4 * Math.sin(t * s.tw + s.ph) : 1;
+        let x = (s.x - drift) % SW; if (x < 0) x += SW;
+        ctx.beginPath(); ctx.arc(x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,' + (s.a * tw) + ')'; ctx.fill();
+      }
+    }
+
+    function frame(ts) {
+      if (SW !== window.innerWidth || SH !== window.innerHeight) resize();
+      if (!SW || !SH || !galaxies[0].img || !galaxies[0].img.width) { requestAnimationFrame(frame); return; }
+      if (last === null) last = ts;
+      const dt = Math.min(0.05, (ts - last) / 1000); last = ts;
+      const t = ts / 1000;
+      if (playing && state === 'group') {
+        galaxies.forEach(function (g) { g.spinAngle += g.spin * dt * speed; });
+        drift += 7 * dt * speed;                 // whole group streaming through space
+      }
+      if (state === 'zooming') { zoomT += dt / ZOOM_IN; if (zoomT >= 1) { zoomT = 1; state = 'galaxy'; } }
+      else if (state === 'unzooming') { zoomT -= dt / ZOOM_OUT; if (zoomT <= 0) { zoomT = 0; state = 'group'; } }
+
+      ctx.clearRect(0, 0, SW, SH);
+      drawFar();
+      drawBgStars(t);
+
+      const positions = galaxies.map(function (g) { return galPos(g, t); });
+      const mw = positions[0], andr = positions[1];
+
+      let transformed = false;
+      if (zoomT > 0) {
+        const e = easeIO(zoomT), s = 1 + e * ZOOM_MAX;
+        ctx.save();
+        ctx.translate(mw.x + (SW / 2 - mw.x) * e, mw.y + (SH / 2 - mw.y) * e);
+        ctx.scale(s, s); ctx.translate(-mw.x, -mw.y);
+        transformed = true;
+      }
+
+      // motion vectors + convergence line (under the galaxies)
+      if (showVectors && zoomT < 0.04) {
+        ctx.save();
+        ctx.setLineDash([5, 6]); ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(mw.x, mw.y); ctx.lineTo(andr.x, andr.y); ctx.stroke();
+        ctx.setLineDash([]);
+        label('~2.5 million light-years', (mw.x + andr.x) / 2, (mw.y + andr.y) / 2 + 6, 'rgba(190,198,220,0.7)');
+        ctx.restore();
+      }
+
+      galaxies.forEach(function (g, i) { drawGalaxy(g, positions[i]); });
+
+      if (showVectors && zoomT < 0.04) {
+        // approach vectors
+        const ux = (andr.x - mw.x), uy = (andr.y - mw.y), L = Math.hypot(ux, uy) || 1;
+        const nx = ux / L, ny = uy / L;
+        arrow(mw.x + nx * (galaxies[0].R * 0.7), mw.y + ny * (galaxies[0].R * 0.7),
+              mw.x + nx * (galaxies[0].R * 0.7 + 46), mw.y + ny * (galaxies[0].R * 0.7 + 46),
+              'rgba(143,184,255,0.9)', null);
+        arrow(andr.x - nx * (galaxies[1].R * 0.55), andr.y - ny * (galaxies[1].R * 0.55),
+              andr.x - nx * (galaxies[1].R * 0.55 + 46), andr.y - ny * (galaxies[1].R * 0.55 + 46),
+              'rgba(255,196,150,0.9)', '110 km/s');
+        // whole-group drift vector
+        arrow(SW * 0.12, SH * 0.84, SW * 0.12 + 82, SH * 0.84, 'rgba(180,200,255,0.75)',
+              'Local Group \u2192 ~600 km/s');
+      }
+
+      // labels
+      if (zoomT < 0.04) {
+        label('Milky Way \u00b7 you are here', mw.x, mw.y + galaxies[0].R * galaxies[0].tilt + 8, 'rgba(165,200,255,0.92)');
+        label('Andromeda (M31)', andr.x, andr.y + galaxies[1].R * galaxies[1].tilt + 8, 'rgba(255,214,180,0.9)');
+        label('Triangulum (M33)', positions[2].x, positions[2].y + galaxies[2].R * galaxies[2].tilt + 8, 'rgba(200,212,235,0.8)');
+      }
+
+      if (transformed) ctx.restore();
+
+      const ov = smooth((zoomT - 0.5) / 0.5);
+      gv.style.display = zoomT > 0 ? 'block' : 'none';
+      gv.style.opacity = ov;
+      gv.classList.toggle('active', state === 'galaxy');
+
+      if (state === 'group') {
+        tag.style.display = 'block';
+        tag.style.left = Math.max(12, mw.x - galaxies[0].R - 168) + 'px';
+        tag.style.top = mw.y + 'px';
+      } else { tag.style.display = 'none'; }
+
+      requestAnimationFrame(frame);
+    }
+    resize();
+    frame(performance.now());
+
+    // ---- controls ----
+    const pp = document.getElementById('playpause');
+    pp.addEventListener('click', function () {
+      playing = !playing; pp.textContent = playing ? 'Pause' : 'Play'; if (playing) last = null;
+    });
+    const spIn = document.getElementById('speed'), spd = document.getElementById('spd');
+    spIn.addEventListener('input', function () { speed = parseFloat(spIn.value); spd.textContent = speed.toFixed(1) + '\u00d7'; });
+    document.getElementById('vectors').addEventListener('change', function (e) { showVectors = e.target.checked; });
+
+    // ---- zoom into the Milky Way -> galaxy view ----
+    function mwHit(mx, my) {
+      const p = galPos(galaxies[0], performance.now() / 1000);
+      return Math.hypot(mx - p.x, my - p.y) < galaxies[0].R * 0.8;
+    }
+    canvas.addEventListener('pointermove', function (e) {
+      canvas.style.cursor = (state === 'group' && mwHit(e.clientX, e.clientY)) ? 'pointer' : 'default';
+    });
+    canvas.addEventListener('click', function (e) {
+      if (state === 'group' && mwHit(e.clientX, e.clientY)) {
+        if (!gf.src) gf.src = 'Milky Way.html';
+        state = 'zooming';
+      }
+    });
+    document.getElementById('backToGroup').addEventListener('click', function () {
+      if (state === 'galaxy' || state === 'zooming') state = 'unzooming';
+    });
+  })();
+  </script>
+</body>
+</html>
