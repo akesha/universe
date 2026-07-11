@@ -921,20 +921,32 @@
         if (facts.flag) setFlag(facts.flag, name + ' flag');
       });
 
-      const regionTitle = name + (country ? ', ' + country.properties.name : '');
+      // Try "Niger State" first, fall back to just "Niger" if not found
+      const regionTitle = name + ' ' + cap1(type);
       fetchWikiSummary(regionTitle).then(function (text) {
         if (id !== reqId) return;
-        bioWrap.innerHTML = '<p class="bio"></p>';
-        bioWrap.querySelector('.bio').textContent = text;
+        if (text !== '—') { bioWrap.innerHTML = '<p class="bio"></p>'; bioWrap.querySelector('.bio').textContent = text; return; }
+        return fetchWikiSummary(name).then(function (t2) {
+          if (id !== reqId) return;
+          bioWrap.innerHTML = '<p class="bio"></p>';
+          bioWrap.querySelector('.bio').textContent = t2;
+        });
       });
     }
     function cap1(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
     function fetchWikiSummary(title) {
-      const url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title);
-      return fetch(url).then(function (r) { return r.json(); }).then(function (j) {
-        return j.extract || '—';
-      }).catch(function () { return '—'; });
+      const params = 'action=query&titles=' + encodeURIComponent(title)
+        + '&prop=extracts&exintro=1&exchars=600&explaintext=1&redirects=1&format=json&origin=*';
+      return fetch('https://en.wikipedia.org/w/api.php?' + params)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const pages = j.query && j.query.pages;
+          if (!pages) return '—';
+          const page = Object.values(pages)[0];
+          if (!page || page.missing !== undefined || !page.extract) return '—';
+          return page.extract.replace(/\n+/g, ' ').trim();
+        }).catch(function () { return '—'; });
     }
 
     // Query Wikidata for a subdivision: capital, head of government, office title, flag.
