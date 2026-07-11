@@ -826,6 +826,28 @@
     backEl.addEventListener('click', exitToWorld);
     zoomEl.addEventListener('click', function () { if (selected) enterCountry(selected); });
 
+    // ---- scroll / pinch to zoom ----
+    const MIN_SCALE = R * 0.6, MAX_SCALE = R * 5;
+    stage.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+      viewScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, viewScale * factor));
+      projection.scale(viewScale);
+    }, { passive: false });
+
+    let lastPinchDist = null;
+    stage.addEventListener('touchstart', function (e) {
+      if (e.touches.length === 2) lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    }, { passive: true });
+    stage.addEventListener('touchmove', function (e) {
+      if (e.touches.length === 2 && lastPinchDist) {
+        const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        viewScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, viewScale * (d / lastPinchDist)));
+        projection.scale(viewScale); lastPinchDist = d;
+      }
+    }, { passive: true });
+    stage.addEventListener('touchend', function () { lastPinchDist = null; }, { passive: true });
+
     function setFlag(url, alt) {
       flagEl.classList.remove('show');
       if (url) {
