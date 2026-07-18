@@ -266,6 +266,10 @@
     const OCEAN = '#13567f';
     const OCEAN_RIM = '#0c3d5c';
     const LAND = '#4c6444';   // natural land tone used until the satellite texture loads
+    // dark "network map" palette used once you drill into a country
+    const DARK_OCEAN = '#060a11';
+    const DARK_LAND = '#0e131b';
+    const DARK_BASE = '#080d14';
 
     // vibrant categorical palette for countries
     const PALETTE = ['#e8552d','#f2a93b','#3aa66f','#e0b13a','#6c5fc0','#d24b8f',
@@ -623,37 +627,37 @@
     function drawGlobe() {
       gctx.clearRect(0, 0, SIZE, SIZE);
 
-      gctx.beginPath(); path(sphere); gctx.fillStyle = OCEAN; gctx.fill();
+      const darkMap = (mode === 'country' || mode === 'region') && regionsFC;
+      gctx.beginPath(); path(sphere); gctx.fillStyle = darkMap ? DARK_OCEAN : OCEAN; gctx.fill();
 
-      if ((mode === 'country' || mode === 'region') && regionsFC) {
-        // faint country context behind the regions
+      if (darkMap) {
+        // Dark network-map treatment: each state keeps its own hue but rendered
+        // near-black, so the white city points read clearly on top.
         if (countriesFC) {
           gctx.beginPath();
           countriesFC.features.forEach(function (f) { path(f); });
-          gctx.fillStyle = '#d2cec3'; gctx.fill();
+          gctx.fillStyle = DARK_LAND; gctx.fill();
+          gctx.strokeStyle = 'rgba(150,175,210,0.16)'; gctx.lineWidth = 0.5; gctx.stroke();
         }
-        // colored regions — in region (city) mode, dim the states we didn't drill into
         regionsFC.features.forEach(function (f) {
-          gctx.globalAlpha = (mode === 'region' && f !== selectedRegion) ? 0.4 : 1;
+          const isSel = f === selectedRegion;
+          // in the city view the drilled state stays readable, the rest recede
+          const k = isSel ? (mode === 'region' ? 0.58 : 0.52) : (mode === 'region' ? 0.90 : 0.80);
           gctx.beginPath(); path(f);
-          gctx.fillStyle = f === selectedRegion ? brighten(f._color) : f._color;
+          gctx.fillStyle = darkFill(f._color, k);
           gctx.fill();
         });
-        gctx.globalAlpha = 1;
         gctx.beginPath();
         regionsFC.features.forEach(function (f) { path(f); });
-        gctx.strokeStyle = 'rgba(255,255,255,0.6)'; gctx.lineWidth = 0.6; gctx.stroke();
+        gctx.strokeStyle = 'rgba(170,195,230,0.22)'; gctx.lineWidth = 0.6; gctx.stroke();
         // outline the drilled country
         if (drillCountry) {
           gctx.beginPath(); path(drillCountry);
-          gctx.strokeStyle = INK; gctx.globalAlpha = 0.45; gctx.lineWidth = 1; gctx.stroke();
-          gctx.globalAlpha = 1;
+          gctx.strokeStyle = 'rgba(190,210,240,0.35)'; gctx.lineWidth = 1; gctx.stroke();
         }
         if (selectedRegion) {
           gctx.beginPath(); path(selectedRegion);
-          gctx.strokeStyle = '#ffffff'; gctx.lineWidth = 3; gctx.stroke();
-          gctx.beginPath(); path(selectedRegion);
-          gctx.strokeStyle = INK; gctx.lineWidth = 1.4; gctx.stroke();
+          gctx.strokeStyle = 'rgba(255,255,255,0.75)'; gctx.lineWidth = 1.8; gctx.stroke();
         }
       } else if (texReady) {
         // photographic satellite earth
@@ -695,9 +699,11 @@
         }
       }
 
-      // animated cloud systems, then day/night shading + atmospheric rim
-      drawClouds();
-      drawTerminator();
+      // animated cloud systems, then day/night shading + atmospheric rim.
+      // Clouds and the day/night wash are skipped on the dark drill-down map so
+      // the states and city points stay crisp.
+      if (!darkMap) { drawClouds(); drawTerminator(); }
+      else { wctx.clearRect(0, 0, SIZE, SIZE); }
       gctx.save();
       gctx.beginPath(); path(sphere);
       gctx.strokeStyle = 'rgba(150,200,255,0.55)'; gctx.lineWidth = 1.5;
@@ -811,6 +817,18 @@
     function brighten(hex) {
       const c = d3.color(hex); if (!c) return hex;
       return c.brighter(0.55).formatHex();
+    }
+    // Blend a palette colour k of the way toward near-black. Keeps a whisper of
+    // the state's hue so the map still has identity without competing with the
+    // white city points.
+    const darkCache = {};
+    function darkFill(hex, k) {
+      const key = hex + '|' + k;
+      if (darkCache[key]) return darkCache[key];
+      const c = d3.color(hex);
+      const out = c ? d3.interpolateRgb(c.formatHex(), DARK_BASE)(k) : DARK_LAND;
+      darkCache[key] = out;
+      return out;
     }
 
     // ---- loop ----
