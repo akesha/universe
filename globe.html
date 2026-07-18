@@ -153,6 +153,12 @@
   .tourbtn:hover { border-color: #6cb6ff; }
   .tourbtn.running { border-color: #6cb6ff; background: rgba(30,52,96,0.55); }
   .tourbtn .ticon { font-size: 10px; color: #8fb8ff; }
+  .cosmiclink {
+    display: block; margin: 8px 0 0 2px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em;
+    color: var(--ink-soft); text-decoration: none; transition: color .15s;
+  }
+  .cosmiclink:hover { color: #8fb8ff; }
   .backbtn {
     position: absolute; top: 4px; left: 4px; z-index: 5;
     appearance: none; -webkit-appearance: none; cursor: pointer;
@@ -215,6 +221,7 @@
     <div id="panel">
       <div id="hint" class="hint"><span class="dot"></span>Drag to spin · click a country</div>
       <button id="tour" class="tourbtn" type="button"><span class="ticon">▶</span><span id="tourlabel">Narrated tour</span></button>
+      <a id="cosmiclink" class="cosmiclink" href="local-group.html?tour=1" target="_top">▲ or the full journey, from the Local Group</a>
       <div id="card" class="card">
         <p class="eyebrow" id="eyebrow">Country</p>
         <div class="titlerow">
@@ -243,6 +250,7 @@
     // view, which supplies its own back button.
     if (window.self !== window.top) {
       var ts = document.getElementById('toSystem'); if (ts) ts.style.display = 'none';
+      var cl = document.getElementById('cosmiclink'); if (cl) cl.style.display = 'none';
     }
 
     // ── Narration ────────────────────────────────────────────────────────
@@ -1025,6 +1033,10 @@
     // speak(text) resolves when the audio finishes (or is stopped). Uses the
     // ElevenLabs proxy when VOICE_PROXY_URL is set; otherwise the browser voice.
     let narrationAudio = null, narrationToken = 0, narrating = false;
+    // When the globe runs inside the full cosmic tour, narration is spoken by the
+    // top frame (which holds the user gesture, so audio is allowed). If set, speak()
+    // delegates there instead of playing locally.
+    let externalSpeak = null;
     function setSpeakUI(on) {
       narrating = on;
       speakEl.classList.toggle('playing', on);
@@ -1037,9 +1049,10 @@
       setSpeakUI(false);
     }
     function speak(text) {
-      stopNarration();
       text = (text || '').trim();
       if (!text) return Promise.resolve();
+      if (externalSpeak) return externalSpeak(text);   // voiced by the top frame during the cosmic tour
+      stopNarration();
       const token = ++narrationToken;
       setSpeakUI(true);
       if (VOICE_PROXY_URL) {
@@ -1510,6 +1523,15 @@
         drawGlobe();
       })
       .catch(function (e) { console.error('map load failed', e); });
+
+    // ---- API for the full cosmic tour (same-origin parent frames drive this) ----
+    window.__universe = {
+      level: 'globe',
+      ready: function () { return !!countriesFC; },
+      startTour: function () { startTour(); },
+      stopTour: function () { externalSpeak = null; stopTour(); },
+      setExternalSpeak: function (fn) { externalSpeak = fn || null; }
+    };
   })();
   </script>
 </body>

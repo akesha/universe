@@ -98,6 +98,22 @@
     .caption h1 { font-size: 23px; }
     #controls { gap: 12px; padding: 9px 12px; flex-wrap: wrap; max-width: 92vw; justify-content: center; }
   }
+
+  /* narrated cosmic tour — stays above the zoom overlays so it's always clickable */
+  .tourbtn {
+    position: fixed; top: 178px; left: 34px; z-index: 10000;
+    appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 9px;
+    border: 1px solid var(--line); background: rgba(10,14,24,0.6); color: var(--ink);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 10px 16px; border-radius: 100px; transition: border-color .15s, background .15s;
+  }
+  .tourbtn:hover { border-color: var(--accent); }
+  .tourbtn.running { border-color: var(--accent); background: rgba(30,44,80,0.7); }
+  .tourbtn .ticon { font-size: 10px; color: var(--accent); }
+  @keyframes tourpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(143,184,255,0); } 50% { box-shadow: 0 0 0 7px rgba(143,184,255,0.10); } }
+  .tourbtn.invite { animation: tourpulse 2s ease-in-out infinite; }
+  @media (max-width: 640px) { .tourbtn { top: auto; bottom: 84px; left: 50%; transform: translateX(-50%); } }
 </style>
 </head>
 <body>
@@ -111,6 +127,7 @@
   </div>
 
   <div id="mwTag" class="mwtag">Click the Milky Way to zoom in &rarr;</div>
+  <button id="tour" class="tourbtn" type="button"><span class="ticon">&#9654;</span><span id="tourlabel">Narrated tour</span></button>
 
   <div id="controls">
     <button id="playpause" type="button">Pause</button>
@@ -396,15 +413,140 @@
     canvas.addEventListener('pointermove', function (e) {
       canvas.style.cursor = (state === 'group' && mwHit(e.clientX, e.clientY)) ? 'pointer' : 'default';
     });
+    function zoomIn() { if (state !== 'group') return; if (!gf.src) gf.src = 'index.html'; state = 'zooming'; }
+    canvas.addEventListener('pointerdown', function () { if (tourRunning) stopCosmic(); });
     canvas.addEventListener('click', function (e) {
-      if (state === 'group' && mwHit(e.clientX, e.clientY)) {
-        if (!gf.src) gf.src = 'index.html';
-        state = 'zooming';
-      }
+      if (state === 'group' && mwHit(e.clientX, e.clientY)) zoomIn();
     });
     document.getElementById('backToGroup').addEventListener('click', function () {
+      if (tourRunning) stopCosmic();
       if (state === 'galaxy' || state === 'zooming') state = 'unzooming';
     });
+
+    window.__universe = {
+      level: 'local-group', childFrameId: 'galaxyFrame',
+      zoomIn: zoomIn, isZoomed: function () { return state !== 'group'; }
+    };
+
+    // ── narration (this top frame voices the whole journey) ───────────────
+    // Set to your narration-worker.js URL for the ElevenLabs voice; '' = the
+    // browser's built-in voice.
+    const VOICE_PROXY_URL = '';
+    const NARRATION_VOICE_ID = 'DODLEQrClDo8wCz460ld'; // Rachel
+    let narrationAudio = null, narrationToken = 0;
+    function stopNarration() {
+      narrationToken++;
+      if (narrationAudio) { try { narrationAudio.pause(); } catch (_) {} narrationAudio = null; }
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+    }
+    function speak(text) {
+      text = (text || '').trim();
+      if (!text) return Promise.resolve();
+      stopNarration();
+      const token = ++narrationToken;
+      if (VOICE_PROXY_URL) {
+        return fetch(VOICE_PROXY_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text.slice(0, 2400), voiceId: NARRATION_VOICE_ID })
+        }).then(function (r) { if (!r.ok) throw new Error('tts'); return r.blob(); })
+          .then(function (blob) {
+            if (token !== narrationToken) return;
+            return new Promise(function (resolve) {
+              const url = URL.createObjectURL(blob);
+              const a = new Audio(url); narrationAudio = a;
+              const done = function () { URL.revokeObjectURL(url); if (token === narrationToken) narrationAudio = null; resolve(); };
+              a.onended = done; a.onerror = done; a.play().catch(done);
+            });
+          }).catch(function () { return browserSpeak(text, token); });
+      }
+      return browserSpeak(text, token);
+    }
+    function browserSpeak(text, token) {
+      return new Promise(function (resolve) {
+        if (!window.speechSynthesis) return resolve();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.98; u.pitch = 1.0;
+        u.onend = function () { resolve(); }; u.onerror = function () { resolve(); };
+        window.speechSynthesis.speak(u);
+      });
+    }
+
+    // ── cosmic tour: drive each nested frame's zoom, then the globe descent ──
+    const tourEl = document.getElementById('tour');
+    const tourLabelEl = document.getElementById('tourlabel');
+    const tourIconEl = tourEl.querySelector('.ticon');
+    let tourRunning = false, tourToken = 0, cosmicGlobeApi = null;
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function waitFor(get, ms) {
+      return new Promise(function (res) {
+        const t0 = Date.now();
+        (function chk() {
+          let v = null; try { v = get(); } catch (e) {}
+          if (v) return res(v);
+          if (Date.now() - t0 > ms) return res(null);
+          setTimeout(chk, 130);
+        })();
+      });
+    }
+    function setTourUI(on) {
+      tourRunning = on;
+      tourEl.classList.toggle('running', on);
+      tourEl.classList.remove('invite');
+      tourLabelEl.textContent = on ? 'Stop tour' : 'Narrated tour';
+      tourIconEl.innerHTML = on ? '&#9632;' : '&#9654;';
+    }
+    function stopCosmic() {
+      tourToken++; setTourUI(false); stopNarration();
+      if (cosmicGlobeApi) { try { cosmicGlobeApi.stopTour(); } catch (e) {} cosmicGlobeApi = null; }
+    }
+    tourEl.addEventListener('click', function () { if (tourRunning) stopCosmic(); else startCosmicTour(); });
+
+    const LINE_LG = 'We begin at the largest scale we call home — the Local Group. More than eighty galaxies drift together here, bound by gravity. Its two giants, our Milky Way and Andromeda, are slowly falling toward each other across two and a half million light-years. Let’s zoom into our own galaxy.';
+    const LINE_MW = 'This is the Milky Way — a barred spiral of a few hundred billion stars. Our Sun lies about twenty-six thousand light-years from the centre, circling it once every two hundred and thirty million years. Let’s fly in toward the Sun.';
+    const LINE_SOLAR = 'Here is our Solar System — eight planets orbiting a single ordinary star. The third one, a small blue world, is the only place we have ever called home. Let’s descend to Earth.';
+
+    function startCosmicTour() {
+      const token = ++tourToken;
+      setTourUI(true);
+      const alive = function () { return token === tourToken; };
+      const say = function (t, m) { return alive() ? Promise.race([speak(t), sleep(m || 10000)]) : Promise.resolve(); };
+      (async function run() {
+        try {
+          if (state !== 'group') { state = 'unzooming'; await sleep(1100); }
+          await sleep(300); if (!alive()) return;
+
+          await say(LINE_LG, 17000); if (!alive()) return;
+          zoomIn();                                                   // Local Group → Milky Way
+          const mwApi = await waitFor(function () { return gf.contentWindow && gf.contentWindow.__universe; }, 14000);
+          await sleep(1500); if (!alive()) return;
+          if (!mwApi) return stopCosmic();
+
+          await say(LINE_MW, 15000); if (!alive()) return;
+          mwApi.zoomIn();                                             // Milky Way → Solar System
+          const solarFrame = await waitFor(function () { return gf.contentWindow.document.getElementById('systemFrame'); }, 10000);
+          const solarApi = await waitFor(function () { return solarFrame && solarFrame.contentWindow && solarFrame.contentWindow.__universe; }, 14000);
+          await sleep(1500); if (!alive()) return;
+          if (!solarApi) return stopCosmic();
+
+          await say(LINE_SOLAR, 14000); if (!alive()) return;
+          solarApi.zoomIn();                                          // Solar System → Globe (Earth)
+          const globeFrame = await waitFor(function () { return solarFrame.contentWindow.document.getElementById('globeFrame'); }, 10000);
+          const globeApi = await waitFor(function () { return globeFrame && globeFrame.contentWindow && globeFrame.contentWindow.__universe; }, 16000);
+          await sleep(1700); if (!alive()) return;
+          if (!globeApi) return stopCosmic();
+          await waitFor(function () { return globeApi.ready && globeApi.ready(); }, 14000);
+          if (!alive()) return;
+
+          // hand off to the globe descent — voiced here, in the gesture-holding top frame
+          cosmicGlobeApi = globeApi;
+          globeApi.setExternalSpeak(function (t) { return alive() ? speak(t) : Promise.resolve(); });
+          globeApi.startTour();
+        } catch (e) { /* best-effort */ }
+      })();
+    }
+
+    // arriving from another page's "full tour" link invites the click (audio needs a gesture)
+    if (new URLSearchParams(location.search).get('tour') === '1') tourEl.classList.add('invite');
   })();
   </script>
 </body>

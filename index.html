@@ -363,14 +363,12 @@
 
     // ---- zoom into the Sun -> solar system ----
     function sunHit(mx, my) { const sp = sunPos(); return Math.hypot(mx - sp.x, my - sp.y) < 20; }
+    function zoomIn() { if (state !== 'galaxy') return; if (!sf.src) sf.src = 'solar-system.html'; state = 'zooming'; }
     canvas.addEventListener('pointermove', function (e) {
       canvas.style.cursor = (state === 'galaxy' && sunHit(e.clientX, e.clientY)) ? 'pointer' : 'default';
     });
     canvas.addEventListener('click', function (e) {
-      if (state === 'galaxy' && sunHit(e.clientX, e.clientY)) {
-        if (!sf.src) sf.src = 'solar-system.html';
-        state = 'zooming';
-      }
+      if (state === 'galaxy' && sunHit(e.clientX, e.clientY)) zoomIn();
     });
     document.getElementById('backToGalaxy').addEventListener('click', function () {
       if (state === 'system' || state === 'zooming') state = 'unzooming';
@@ -380,6 +378,12 @@
     if (window.self !== window.top) {
       var tg = document.getElementById('toGroup'); if (tg) tg.style.display = 'none';
     }
+
+    // API for the full cosmic tour (driven by the top Local Group frame)
+    window.__universe = {
+      level: 'milky-way', childFrameId: 'systemFrame',
+      zoomIn: zoomIn, isZoomed: function () { return state !== 'galaxy'; }
+    };
   })();
   </script>
 </body>

@@ -414,6 +414,12 @@
     if (window.self !== window.top) {
       var tg = document.getElementById('toGalaxy'); if (tg) tg.style.display = 'none';
     }
+
+    // API for the full cosmic tour (driven by the top Local Group frame)
+    window.__universe = {
+      level: 'solar-system', childFrameId: 'globeFrame',
+      zoomIn: enterGlobe, isZoomed: function () { return state !== 'system'; }
+    };
   })();
   </script>
 </body>
