@@ -34,13 +34,14 @@ const ALLOWED_ORIGINS = [
 // Only the voices this app offers — a stolen URL can't drive arbitrary
 // (e.g. cloned) voices on your account.
 const ALLOWED_VOICE_IDS = new Set([
-  'DODLEQrClDo8wCz460ld', // Rachel — calm narrator (default)
+  'hnFidmF05jrIKH0LAjEc', // custom narration voice (default)
+  'DODLEQrClDo8wCz460ld', // Rachel — calm narrator
   'EXAVITQu4vr4xnSDxMaL', // Sarah
   'pNInz6obpgDQGcFmaJgB', // Adam
   'ThT5KcBeYPX3keUQqHPh'  // Dorothy
 ]);
 
-const DEFAULT_VOICE_ID = 'DODLEQrClDo8wCz460ld';
+const DEFAULT_VOICE_ID = 'hnFidmF05jrIKH0LAjEc';
 
 export default {
   async fetch(request, env) {
