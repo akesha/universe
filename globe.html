@@ -128,6 +128,40 @@
   .zoombtn:hover { background: var(--ink); color: var(--bg); }
   .zoombtn[hidden] { display: none; }
 
+  /* ---- place search ---- */
+  .searchwrap { position: relative; margin: 0 0 14px; }
+  #search {
+    width: 100%; box-sizing: border-box;
+    background: rgba(10,14,24,0.55); border: 1px solid var(--line); color: var(--ink);
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.02em;
+    padding: 10px 14px; border-radius: 100px; outline: none;
+    transition: border-color .15s, background .15s;
+  }
+  #search:focus { border-color: #6cb6ff; background: rgba(12,18,30,0.8); }
+  #search::placeholder { color: var(--ink-soft); }
+  #search::-webkit-search-cancel-button { filter: invert(0.6); cursor: pointer; }
+  .results {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30;
+    margin: 0; padding: 4px; list-style: none;
+    background: rgba(11,16,26,0.97); border: 1px solid var(--line); border-radius: 12px;
+    max-height: 262px; overflow-y: auto;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 14px 34px rgba(0,0,0,0.5);
+  }
+  .results[hidden] { display: none; }
+  .results li {
+    padding: 8px 11px; border-radius: 7px; cursor: pointer;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .results li.active, .results li:hover { background: rgba(108,182,255,0.16); }
+  .results .nm { font-size: 13px; color: var(--ink); }
+  .results .ctx {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+    color: var(--ink-soft); margin-left: auto; text-align: right; white-space: nowrap;
+  }
+  .results .none { color: var(--ink-soft); font-size: 12px; cursor: default; }
+  .results .none:hover { background: none; }
+
   /* ---- narration ---- */
   .speakbtn {
     margin-left: auto; flex: 0 0 auto; cursor: pointer;
@@ -219,6 +253,10 @@
       <div id="loading" class="loading" hidden>Loading regions…</div>
     </div>
     <div id="panel">
+      <div class="searchwrap">
+        <input id="search" type="search" placeholder="Search a city or country…" autocomplete="off" spellcheck="false">
+        <ul id="results" class="results" hidden></ul>
+      </div>
       <div id="hint" class="hint"><span class="dot"></span>Drag to spin · click a country</div>
       <button id="tour" class="tourbtn" type="button"><span class="ticon">▶</span><span id="tourlabel">Narrated tour</span></button>
       <a id="cosmiclink" class="cosmiclink" href="local-group.html?tour=1" target="_top">▲ or the full journey, from the Local Group</a>
@@ -1178,55 +1216,85 @@
 
       (async function run() {
         try {
-          // clean reset to the whole Earth (without flying to a stored country)
-          mode = 'world'; regionsFC = null; selectedRegion = null; selectedCity = null;
-          cityList = null; drillRegion = null; drillCountry = null; selected = null;
-          backEl.hidden = true; loadingEl.hidden = true; speakEl.hidden = true;
-          cardEl.classList.remove('show'); hintEl.style.display = 'none';
-          flyTo(-rotation[0], -rotation[1], R);
-          await tourSleep(700); if (!alive()) return;
+          // Pick up from wherever the viewer already is: only a fresh, unzoomed
+          // globe plays the whole journey from Earth.
+          let country = drillCountry || selected || null;
+          let stage = 'earth';
+          if (mode === 'region' && drillRegion && cityList && cityList.length) stage = 'cities';
+          else if (mode === 'country' && drillCountry && regionsFC) stage = 'states';
+          else if (country) stage = 'country';
 
-          await say('This is Earth — home to more than eight billion people across nearly two hundred countries. Let’s travel from the whole planet down to a single city.', 13000);
-          if (!alive()) return;
+          if (stage === 'earth') {
+            // clean reset to the whole Earth (without flying to a stored country)
+            mode = 'world'; regionsFC = null; selectedRegion = null; selectedCity = null;
+            cityList = null; drillRegion = null; drillCountry = null; selected = null;
+            backEl.hidden = true; loadingEl.hidden = true; speakEl.hidden = true;
+            cardEl.classList.remove('show'); hintEl.style.display = 'none';
+            flyTo(-rotation[0], -rotation[1], R);
+            await tourSleep(700); if (!alive()) return;
 
-          // choose a destination country present in the map
-          const prefs = ['Japan', 'France', 'Italy', 'Germany', 'Brazil', 'Egypt', 'Kenya', 'Mexico', 'India'];
-          let country = null;
-          for (const nm of prefs) { country = countriesFC.features.find(function (f) { return f.properties.name === nm; }); if (country) break; }
-          if (!country) country = countriesFC.features[Math.floor(Math.random() * countriesFC.features.length)];
+            await say('This is Earth — home to more than eight billion people across nearly two hundred countries. Let’s travel from the whole planet down to a single city.', 13000);
+            if (!alive()) return;
 
-          selected = country;
-          const cc = d3.geoCentroid(country);
-          flyTo(cc[0], cc[1], R * 1.9);
-          showCountry(country);
-          await say('Our destination: ' + country.properties.name + '. Zooming in.', 7000);
-          if (!alive()) return;
+            // choose a destination country present in the map
+            const prefs = ['Japan', 'France', 'Italy', 'Germany', 'Brazil', 'Egypt', 'Kenya', 'Mexico', 'India'];
+            for (const nm of prefs) { country = countriesFC.features.find(function (f) { return f.properties.name === nm; }); if (country) break; }
+            if (!country) country = countriesFC.features[Math.floor(Math.random() * countriesFC.features.length)];
+            stage = 'country';
 
-          await enterCountry(country);
-          if (!alive()) return;
-          if (mode !== 'country') { await say('Region data isn’t available for this country, so we’ll stop here.', 6000); stopTour(); return; }
-          await tourSleep(900); if (!alive()) return;
+            selected = country;
+            const cc = d3.geoCentroid(country);
+            flyTo(cc[0], cc[1], R * 1.9);
+            showCountry(country);
+            await say('Our destination: ' + country.properties.name + '. Zooming in.', 7000);
+            if (!alive()) return;
+          } else if (stage === 'country') {
+            selected = country;
+            const cc = d3.geoCentroid(country);
+            flyTo(cc[0], cc[1], R * 1.9);
+            showCountry(country);
+            await say('Let’s pick up here, in ' + country.properties.name + ', and head down to a city.', 8000);
+            if (!alive()) return;
+          }
 
-          // its largest city, and the state that contains it
-          const arr = await ensurePlaces();
-          const code = alpha2(country);
-          const inCountry = arr.filter(function (c) { return code && c.cc === code; });
-          const big = inCountry.sort(function (a, b) { return b.pop - a.pop; })[0];
-          let region = null;
-          if (big) region = regionsFC.features.find(function (f) { return d3.geoContains(f, [big.lon, big.lat]); });
-          if (!region) region = regionsFC.features[0];
-          selectedRegion = region;
-          showRegion(region, country);
-          const regName = region.properties.name || region.properties.name_en || 'a region';
-          await say('Here we’ll dive into ' + regName + '.', 6000);
-          if (!alive()) return;
+          let big = null;
+          if (stage === 'country') {
+            await enterCountry(country);
+            if (!alive()) return;
+            if (mode !== 'country') { await say('Region data isn’t available for this country, so we’ll stop here.', 6000); stopTour(); return; }
+            await tourSleep(900); if (!alive()) return;
+            stage = 'states';
+          }
 
-          await enterRegion(region);
-          if (!alive()) return;
-          if (mode !== 'region') { await say('That’s as far as the city data takes us. Enjoy exploring!', 6000); stopTour(); return; }
-          await tourSleep(900); if (!alive()) return;
+          let region = drillRegion || selectedRegion || null;
+          if (stage === 'states') {
+            // its largest city, and the state that contains it
+            const arr = await ensurePlaces();
+            const code = alpha2(country);
+            const inCountry = arr.filter(function (c) { return code && c.cc === code; });
+            big = inCountry.sort(function (a, b) { return b.pop - a.pop; })[0];
+            region = null;
+            if (big) region = regionsFC.features.find(function (f) { return d3.geoContains(f, [big.lon, big.lat]); });
+            if (!region) region = regionsFC.features[0];
+            selectedRegion = region;
+            showRegion(region, country);
+            const regName = region.properties.name || region.properties.name_en || 'a region';
+            await say('Here we’ll dive into ' + regName + '.', 6000);
+            if (!alive()) return;
 
-          const city = (cityList || []).slice().sort(function (a, b) { return b.pop - a.pop; })[0] || big;
+            await enterRegion(region);
+            if (!alive()) return;
+            if (mode !== 'region') { await say('That’s as far as the city data takes us. Enjoy exploring!', 6000); stopTour(); return; }
+            await tourSleep(900); if (!alive()) return;
+          } else {
+            // already in the city view — introduce where we are and carry on
+            const regName = (region && (region.properties.name || region.properties.name_en)) || 'this region';
+            await say('Let’s continue from ' + regName + '.', 7000);
+            if (!alive()) return;
+          }
+
+          // if the viewer already had a city open, talk about that one
+          const city = selectedCity || (cityList || []).slice().sort(function (a, b) { return b.pop - a.pop; })[0] || big;
           if (city) {
             selectedCity = city;
             flyTo(city.lon, city.lat, R * 8);
@@ -1234,7 +1302,7 @@
             await tourSleep(1800); if (!alive()) return;   // let the overview + mayor load
             await say(cardNarration(), 22000);
             if (!alive()) return;
-            await say('And there it is — from the whole Earth down to ' + city.name + '. Tap any place to keep exploring on your own.', 11000);
+            await say('And that’s ' + city.name + '. Tap any place to keep exploring on your own.', 11000);
           }
         } catch (err) {
           /* swallow — tour is best-effort */
@@ -1243,6 +1311,137 @@
         }
       })();
     }
+
+    // ── place search ──────────────────────────────────────────────────────
+    // Type a city or country and jump straight there — for a city it drills the
+    // whole way in (country → state → city) so you never need to know where it is.
+    const searchEl = document.getElementById('search');
+    const resultsEl = document.getElementById('results');
+    let searchHits = [], activeIdx = -1, searchTimer = null, ccName = null;
+
+    function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+    function countryNameFor(cc) {
+      if (!ccName && countriesFC) {
+        ccName = {};
+        countriesFC.features.forEach(function (f) { const a = alpha2(f); if (a) ccName[a] = f.properties.name; });
+      }
+      return (ccName && ccName[cc]) || cc || '';
+    }
+    // match at the start of the name or of any word inside it
+    function matchRank(name, nq) {
+      const n = norm(name), i = n.indexOf(nq);
+      if (i === 0) return 0;
+      if (i > 0 && /[^a-z0-9]/.test(n[i - 1])) return 1;
+      return -1;
+    }
+
+    function runSearch(q) {
+      const nq = norm(q).trim();
+      if (nq.length < 2) { closeResults(); return; }
+      const hits = [];
+      if (countriesFC) {
+        for (const f of countriesFC.features) {
+          const r = matchRank(f.properties.name, nq);
+          if (r >= 0) hits.push({ kind: 'country', name: f.properties.name, rank: r, pop: Infinity, feature: f });
+        }
+      }
+      if (placesArr) {
+        for (const c of placesArr) {
+          const r = matchRank(c.name, nq);
+          if (r >= 0) hits.push({ kind: 'city', name: c.name, rank: r, pop: c.pop, city: c });
+        }
+      }
+      hits.sort(function (a, b) { return a.rank - b.rank || b.pop - a.pop; });
+      searchHits = hits.slice(0, 9);
+      renderResults(!placesArr);
+    }
+
+    function renderResults(placesLoading) {
+      resultsEl.innerHTML = '';
+      if (!searchHits.length) {
+        const li = document.createElement('li'); li.className = 'none';
+        li.textContent = placesLoading ? 'Loading places…' : 'No matches';
+        resultsEl.appendChild(li); resultsEl.hidden = false; activeIdx = -1; return;
+      }
+      searchHits.forEach(function (h, i) {
+        const li = document.createElement('li');
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = h.name;
+        const ctx = document.createElement('span'); ctx.className = 'ctx';
+        ctx.textContent = h.kind === 'country' ? 'Country'
+          : countryNameFor(h.city.cc) + (h.pop ? ' · ' + Math.round(h.pop / 1000) + 'k' : '');
+        li.appendChild(nm); li.appendChild(ctx);
+        li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(i); });
+        resultsEl.appendChild(li);
+      });
+      resultsEl.hidden = false; activeIdx = 0; highlight();
+    }
+    function highlight() {
+      const items = resultsEl.querySelectorAll('li');
+      items.forEach(function (li, i) { li.classList.toggle('active', i === activeIdx); });
+      if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+    }
+    function closeResults() { resultsEl.hidden = true; activeIdx = -1; }
+
+    function choose(i) {
+      const h = searchHits[i]; if (!h) return;
+      closeResults(); searchEl.blur();
+      if (h.kind === 'country') gotoCountry(h.feature); else gotoCity(h.city);
+    }
+
+    function gotoCountry(f) {
+      if (tourRunning) stopTour();
+      stopNarration();
+      mode = 'world'; regionsFC = null; selectedRegion = null;
+      cityList = null; selectedCity = null; drillRegion = null; drillCountry = null;
+      backEl.hidden = true; loadingEl.hidden = true;
+      selected = f;
+      const c = d3.geoCentroid(f);
+      flyTo(c[0], c[1], R);
+      showCountry(f);
+    }
+
+    function gotoCity(city) {
+      if (tourRunning) stopTour();
+      stopNarration();
+      const country = countriesFC && countriesFC.features.find(function (f) { return d3.geoContains(f, [city.lon, city.lat]); });
+      if (!country) { flashMsg('Could not locate ' + city.name); return; }
+      selected = country;
+      loadingEl.hidden = false; loadingEl.textContent = 'Finding ' + city.name + '…';
+      enterCountry(country).then(function () {
+        if (mode !== 'country' || !regionsFC) { loadingEl.hidden = true; return; }
+        const region = regionsFC.features.find(function (f) { return d3.geoContains(f, [city.lon, city.lat]); });
+        if (!region) { loadingEl.hidden = true; return; }   // no state match: stay at the state view
+        selectedRegion = region;
+        return enterRegion(region).then(function () {
+          loadingEl.hidden = true;
+          if (mode !== 'region') return;
+          const target = (cityList && cityList.indexOf(city) !== -1) ? city
+            : (cityList || []).find(function (c) { return c.name === city.name; }) || city;
+          selectedCity = target;
+          flyTo(target.lon, target.lat, R * 8);
+          showCity(target);
+        });
+      }).catch(function () { loadingEl.hidden = true; });
+    }
+
+    searchEl.addEventListener('focus', function () {
+      ensurePlaces().then(function () {
+        if (document.activeElement === searchEl && searchEl.value.trim().length >= 2) runSearch(searchEl.value);
+      }).catch(function () {});
+    });
+    searchEl.addEventListener('input', function () {
+      clearTimeout(searchTimer);
+      const q = searchEl.value;
+      searchTimer = setTimeout(function () { runSearch(q); }, 120);
+    });
+    searchEl.addEventListener('keydown', function (e) {
+      if (resultsEl.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(searchHits.length - 1, activeIdx + 1); highlight(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(0, activeIdx - 1); highlight(); }
+      else if (e.key === 'Enter') { e.preventDefault(); choose(activeIdx); }
+      else if (e.key === 'Escape') { closeResults(); searchEl.blur(); }
+    });
+    searchEl.addEventListener('blur', function () { setTimeout(closeResults, 120); });
 
     // ---- scroll / pinch to zoom ----
     const MIN_SCALE = R * 0.6, MAX_SCALE = R * 40;

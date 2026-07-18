@@ -548,27 +548,51 @@
       const say = function (t, m) { return alive() ? Promise.race([speak(t), sleep(m || 10000)]) : Promise.resolve(); };
       (async function run() {
         try {
-          if (state !== 'group') { state = 'unzooming'; await sleep(1100); }
-          await sleep(300); if (!alive()) return;
+          // Resume from however deep the viewer already is — only an un-zoomed
+          // Local Group starts the journey from the very beginning.
+          const peek = function (get) { try { return get(); } catch (e) { return null; } };
+          let mwApi = peek(function () { return gf.contentWindow && gf.contentWindow.__universe; });
+          let solarFrame = mwApi && peek(function () { return gf.contentWindow.document.getElementById('systemFrame'); });
+          let solarApi = solarFrame && peek(function () { return solarFrame.contentWindow && solarFrame.contentWindow.__universe; });
+          let globeFrame = solarApi && peek(function () { return solarFrame.contentWindow.document.getElementById('globeFrame'); });
+          let globeApi = globeFrame && peek(function () { return globeFrame.contentWindow && globeFrame.contentWindow.__universe; });
 
-          await say(LINE_LG, 17000); if (!alive()) return;
-          zoomIn();                                                   // Local Group → Milky Way
-          const mwApi = await waitFor(function () { return gf.contentWindow && gf.contentWindow.__universe; }, 14000);
-          await sleep(1500); if (!alive()) return;
-          if (!mwApi) return stopCosmic();
+          let stage = 'lg';
+          if (globeApi && solarApi.isZoomed()) stage = 'globe';
+          else if (solarApi && mwApi.isZoomed()) stage = 'solar';
+          else if (mwApi && state !== 'group') stage = 'mw';
 
-          await say(LINE_MW, 15000); if (!alive()) return;
-          mwApi.zoomIn();                                             // Milky Way → Solar System
-          const solarFrame = await waitFor(function () { return gf.contentWindow.document.getElementById('systemFrame'); }, 10000);
-          const solarApi = await waitFor(function () { return solarFrame && solarFrame.contentWindow && solarFrame.contentWindow.__universe; }, 14000);
-          await sleep(1500); if (!alive()) return;
-          if (!solarApi) return stopCosmic();
+          await sleep(250); if (!alive()) return;
 
-          await say(LINE_SOLAR, 14000); if (!alive()) return;
-          solarApi.zoomIn();                                          // Solar System → Globe (Earth)
-          const globeFrame = await waitFor(function () { return solarFrame.contentWindow.document.getElementById('globeFrame'); }, 10000);
-          const globeApi = await waitFor(function () { return globeFrame && globeFrame.contentWindow && globeFrame.contentWindow.__universe; }, 16000);
-          await sleep(1700); if (!alive()) return;
+          if (stage === 'lg') {
+            await say(LINE_LG, 17000); if (!alive()) return;
+            zoomIn();                                                 // Local Group → Milky Way
+            mwApi = await waitFor(function () { return gf.contentWindow && gf.contentWindow.__universe; }, 14000);
+            await sleep(1500); if (!alive()) return;
+            if (!mwApi) return stopCosmic();
+            stage = 'mw';
+          }
+
+          if (stage === 'mw') {
+            await say(LINE_MW, 15000); if (!alive()) return;
+            mwApi.zoomIn();                                           // Milky Way → Solar System
+            solarFrame = await waitFor(function () { return gf.contentWindow.document.getElementById('systemFrame'); }, 10000);
+            solarApi = await waitFor(function () { return solarFrame && solarFrame.contentWindow && solarFrame.contentWindow.__universe; }, 14000);
+            await sleep(1500); if (!alive()) return;
+            if (!solarApi) return stopCosmic();
+            stage = 'solar';
+          }
+
+          if (stage === 'solar') {
+            await say(LINE_SOLAR, 14000); if (!alive()) return;
+            solarApi.zoomIn();                                        // Solar System → Globe (Earth)
+            globeFrame = await waitFor(function () { return solarFrame.contentWindow.document.getElementById('globeFrame'); }, 10000);
+            globeApi = await waitFor(function () { return globeFrame && globeFrame.contentWindow && globeFrame.contentWindow.__universe; }, 16000);
+            await sleep(1700); if (!alive()) return;
+            if (!globeApi) return stopCosmic();
+            stage = 'globe';
+          }
+
           if (!globeApi) return stopCosmic();
           await waitFor(function () { return globeApi.ready && globeApi.ready(); }, 14000);
           if (!alive()) return;
