@@ -50,13 +50,15 @@
   }
   #controls .grp { display: flex; align-items: center; gap: 8px; }
   #controls .sep { width: 1px; height: 18px; background: var(--line); }
-  #playpause {
+  #playpause, #music {
     appearance: none; cursor: pointer; border: 1px solid var(--line);
     background: transparent; color: var(--ink);
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-    padding: 6px 14px; border-radius: 100px; transition: background .15s, color .15s;
+    padding: 6px 14px; border-radius: 100px; transition: background .15s, color .15s, border-color .15s;
   }
-  #playpause:hover { background: var(--ink); color: #05070d; }
+  #playpause:hover, #music:hover { background: var(--ink); color: #05070d; }
+  #music[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  #music[aria-pressed="true"]:hover { background: var(--accent); color: #05070d; }
   input[type="range"] {
     -webkit-appearance: none; appearance: none; height: 3px; width: 116px;
     background: var(--line); border-radius: 3px; outline: none; cursor: pointer;
@@ -129,6 +131,8 @@
     <div class="grp">Speed <input id="speed" type="range" min="0.2" max="8" step="0.1" value="1"><span id="spd">1.0&times;</span></div>
     <div class="sep"></div>
     <label class="chk"><input id="orbit" type="checkbox" checked> Sun&rsquo;s orbit</label>
+    <div class="sep"></div>
+    <button id="music" type="button" aria-pressed="false">&#9834; Music</button>
   </div>
 
   <div id="systemView">
@@ -361,6 +365,90 @@
     spIn.addEventListener('input', function () { speed = parseFloat(spIn.value); spd.textContent = speed.toFixed(1) + '\u00d7'; });
     document.getElementById('orbit').addEventListener('change', function (e) { showOrbit = e.target.checked; });
 
+    // ---- ambient "astral" music (fully synthesised — no audio files) ----
+    // Slow, detuned drones through a warm filter and a spacious feedback delay,
+    // with gentle swells and a drifting filter sweep. Starts on a click
+    // (browsers block audio without a gesture) and fades in / out.
+    let audioCtx = null, masterGain = null, musicOn = false, musicNodes = [];
+    function startMusic() {
+      if (musicOn) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audioCtx = audioCtx || new AC();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const t = audioCtx.currentTime;
+
+      masterGain = audioCtx.createGain();
+      masterGain.gain.setValueAtTime(0.0001, t);
+      masterGain.gain.exponentialRampToValueAtTime(0.085, t + 3.5);   // gentle fade-in
+      const comp = audioCtx.createDynamicsCompressor();               // safety limiter
+      masterGain.connect(comp); comp.connect(audioCtx.destination);
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass'; filter.frequency.value = 680; filter.Q.value = 0.7;
+      filter.connect(masterGain);
+
+      // spacious feedback delay wash
+      const delay = audioCtx.createDelay(2.0); delay.delayTime.value = 0.44;
+      const fb = audioCtx.createGain(); fb.gain.value = 0.42;
+      const wet = audioCtx.createGain(); wet.gain.value = 0.32;
+      filter.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(masterGain);
+
+      // slow filter sweep
+      const lfo = audioCtx.createOscillator(); lfo.frequency.value = 0.045;
+      const lfoG = audioCtx.createGain(); lfoG.gain.value = 320;
+      lfo.connect(lfoG); lfoG.connect(filter.frequency); lfo.start(); musicNodes.push(lfo);
+
+      // drone stack — an open A-minor / sus wash, each note a detuned pair
+      const freqs = [110.0, 164.81, 220.0, 246.94, 329.63];
+      freqs.forEach(function (f, i) {
+        [-1, 1].forEach(function (dir) {
+          const o = audioCtx.createOscillator();
+          o.type = i > 2 ? 'sine' : 'triangle';
+          o.frequency.value = f;
+          o.detune.value = dir * (3 + i * 1.6);
+          const g = audioCtx.createGain();
+          const base = 0.09 * (1 - i * 0.12);
+          g.gain.value = base;
+          o.connect(g); g.connect(filter); o.start(); musicNodes.push(o);
+          // slow amplitude swell so the pad breathes
+          const sw = audioCtx.createOscillator(); sw.frequency.value = 0.028 + i * 0.011 + (dir > 0 ? 0.006 : 0);
+          const swG = audioCtx.createGain(); swG.gain.value = base * 0.5;
+          sw.connect(swG); swG.connect(g.gain); sw.start(); musicNodes.push(sw);
+        });
+      });
+
+      // faint high shimmer
+      const sh = audioCtx.createOscillator(); sh.type = 'sine'; sh.frequency.value = 880;
+      const shg = audioCtx.createGain(); shg.gain.value = 0.018;
+      const shL = audioCtx.createOscillator(); shL.frequency.value = 0.07;
+      const shLG = audioCtx.createGain(); shLG.gain.value = 0.016;
+      shL.connect(shLG); shLG.connect(shg.gain);
+      sh.connect(shg); shg.connect(filter); sh.start(); shL.start(); musicNodes.push(sh, shL);
+
+      musicOn = true;
+    }
+    function stopMusic() {
+      if (!musicOn || !audioCtx) return;
+      const t = audioCtx.currentTime;
+      masterGain.gain.cancelScheduledValues(t);
+      masterGain.gain.setValueAtTime(Math.max(0.0001, masterGain.gain.value), t);
+      masterGain.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+      const nodes = musicNodes; musicNodes = [];
+      setTimeout(function () { nodes.forEach(function (n) { try { n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} }); }, 1800);
+      musicOn = false;
+    }
+    const musicBtn = document.getElementById('music');
+    musicBtn.addEventListener('click', function () {
+      if (musicOn) { stopMusic(); musicBtn.setAttribute('aria-pressed', 'false'); musicBtn.innerHTML = '♪ Music'; }
+      else { startMusic(); musicBtn.setAttribute('aria-pressed', 'true'); musicBtn.innerHTML = '♪ Music ●'; }
+    });
+    // pause the audio while the tab is hidden; resume when it returns (if on)
+    document.addEventListener('visibilitychange', function () {
+      if (!audioCtx) return;
+      if (document.hidden) audioCtx.suspend(); else if (musicOn) audioCtx.resume();
+    });
+
     // ---- zoom into the Sun -> solar system ----
     function sunHit(mx, my) { const sp = sunPos(); return Math.hypot(mx - sp.x, my - sp.y) < 20; }
     function zoomIn() { if (state !== 'galaxy') return; if (!sf.src) sf.src = 'solar-system.html'; state = 'zooming'; }
@@ -382,7 +470,9 @@
     // API for the full cosmic tour (driven by the top Local Group frame)
     window.__universe = {
       level: 'milky-way', childFrameId: 'systemFrame',
-      zoomIn: zoomIn, isZoomed: function () { return state !== 'galaxy'; }
+      zoomIn: zoomIn, isZoomed: function () { return state !== 'galaxy'; },
+      startMusic: startMusic, stopMusic: stopMusic,
+      musicState: function () { return { on: musicOn, ctx: audioCtx ? audioCtx.state : null, voices: musicNodes.length }; }
     };
   })();
   </script>
