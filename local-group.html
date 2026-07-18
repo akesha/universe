@@ -142,6 +142,8 @@
     <button id="backToGroup" type="button">&lsaquo; Back to the Local Group</button>
   </div>
 
+  <audio id="bgm" loop preload="auto" src="audio/zodiac-drift.mp3"></audio>
+
   <script>
   (function () {
     const canvas = document.getElementById('space');
@@ -439,7 +441,40 @@
       if (narrationAudio) { try { narrationAudio.pause(); } catch (_) {} narrationAudio = null; }
       if (window.speechSynthesis) window.speechSynthesis.cancel();
     }
+
+    // ── music bed ("Zodiac Drift") under the whole tour, ducked while speaking ──
+    const bgm = document.getElementById('bgm');
+    const MUSIC_BASE = 0.34, MUSIC_DUCK = 0.10;
+    let bedOn = false, bedDucked = false, bedTween = null;
+    function tweenBed(target, ms) {
+      clearInterval(bedTween);
+      const start = bgm.volume, t0 = performance.now();
+      bedTween = setInterval(function () {
+        const k = Math.min(1, (performance.now() - t0) / ms);
+        bgm.volume = Math.max(0, Math.min(1, start + (target - start) * k));
+        if (k >= 1) { clearInterval(bedTween); bedTween = null; if (target === 0) { try { bgm.pause(); } catch (e) {} } }
+      }, 40);
+    }
+    function startBed() {
+      if (bedOn) return;
+      bedOn = true; bedDucked = false; bgm.volume = 0;
+      const p = bgm.play(); if (p && p.catch) p.catch(function () {});
+      tweenBed(MUSIC_BASE, 2200);
+    }
+    function stopBed() { if (!bedOn) return; bedOn = false; tweenBed(0, 1200); }
+    function duckBed(on) { bedDucked = !!on; if (bedOn) tweenBed(bedDucked ? MUSIC_DUCK : MUSIC_BASE, 350); }
+
+    // speak() ducks the bed for the duration of each spoken line, then lifts it
     function speak(text) {
+      const t = (text || '').trim();
+      if (!t) return Promise.resolve();
+      duckBed(true);
+      return Promise.resolve(_narrate(t)).then(
+        function (v) { duckBed(false); return v; },
+        function () { duckBed(false); }
+      );
+    }
+    function _narrate(text) {
       text = (text || '').trim();
       if (!text) return Promise.resolve();
       stopNarration();
@@ -496,7 +531,7 @@
       tourIconEl.innerHTML = on ? '&#9632;' : '&#9654;';
     }
     function stopCosmic() {
-      tourToken++; setTourUI(false); stopNarration();
+      tourToken++; setTourUI(false); stopNarration(); stopBed();
       if (cosmicGlobeApi) { try { cosmicGlobeApi.stopTour(); } catch (e) {} cosmicGlobeApi = null; }
     }
     tourEl.addEventListener('click', function () { if (tourRunning) stopCosmic(); else startCosmicTour(); });
@@ -508,6 +543,7 @@
     function startCosmicTour() {
       const token = ++tourToken;
       setTourUI(true);
+      startBed();   // music bed fades in under the whole journey
       const alive = function () { return token === tourToken; };
       const say = function (t, m) { return alive() ? Promise.race([speak(t), sleep(m || 10000)]) : Promise.resolve(); };
       (async function run() {
