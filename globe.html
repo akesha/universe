@@ -194,11 +194,11 @@
           <h1 class="name" id="name">—</h1>
         </div>
         <div class="facts">
-          <div class="fact"><p class="k">Capital</p><p class="v" id="capital">—</p></div>
-          <div class="fact"><p class="k">Current leader</p><p class="v" id="leader">—</p></div>
+          <div class="fact"><p class="k" id="capK">Capital</p><p class="v" id="capital">—</p></div>
+          <div class="fact"><p class="k" id="leaderK">Current leader</p><p class="v" id="leader">—</p></div>
         </div>
         <div id="bioWrap"><p class="bio" id="bio"></p></div>
-        <button id="zoom" class="zoombtn" hidden type="button">Explore states &amp; provinces →</button>
+        <button id="zoom" class="zoombtn" hidden type="button">Explore provinces &amp; cities →</button>
         <p class="src">Capital, leaders &amp; flags: live from Wikidata · overview: AI</p>
       </div>
     </div>
@@ -481,6 +481,10 @@
     let countriesFC = null, selected = null, rotation = [0, -12, 0], viewScale = R;
     let mode = 'world', regionsFC = null, selectedRegion = null, drillCountry = null;
     let admin1FC = null, admin1Loading = null;
+    // ---- cities (populated places) shown when drilling into a state / province ----
+    let placesFC = null, placesLoading = null;   // full worldwide set, loaded once
+    let citiesFC = null, selectedCity = null;     // subset for the drilled province
+    let drillRegion = null;                       // the state / province we zoomed into
 
     // ---- procedural weather (animated cloud systems) ----
     let cloudDrift = 0, clockT = 0;
@@ -571,19 +575,21 @@
 
       gctx.beginPath(); path(sphere); gctx.fillStyle = OCEAN; gctx.fill();
 
-      if (mode === 'country' && regionsFC) {
+      if ((mode === 'country' || mode === 'region') && regionsFC) {
         // faint country context behind the regions
         if (countriesFC) {
           gctx.beginPath();
           countriesFC.features.forEach(function (f) { path(f); });
           gctx.fillStyle = '#d2cec3'; gctx.fill();
         }
-        // colored regions
+        // colored regions — in region (city) mode, dim the states we didn't drill into
         regionsFC.features.forEach(function (f) {
+          gctx.globalAlpha = (mode === 'region' && f !== selectedRegion) ? 0.4 : 1;
           gctx.beginPath(); path(f);
           gctx.fillStyle = f === selectedRegion ? brighten(f._color) : f._color;
           gctx.fill();
         });
+        gctx.globalAlpha = 1;
         gctx.beginPath();
         regionsFC.features.forEach(function (f) { path(f); });
         gctx.strokeStyle = 'rgba(255,255,255,0.6)'; gctx.lineWidth = 0.6; gctx.stroke();
@@ -650,6 +656,65 @@
       gctx.shadowBlur = 0;
       gctx.beginPath(); path(sphere);
       gctx.strokeStyle = OCEAN_RIM; gctx.lineWidth = 0.8; gctx.stroke();
+      gctx.restore();
+
+      if (mode === 'region' && citiesFC) drawCities();
+    }
+
+    // Draw the drilled state's cities as points on the front hemisphere, sized
+    // by population. The biggest few (plus any selected city) get name labels.
+    function drawCities() {
+      const rot = projection.rotate();
+      const center = [-rot[0], -rot[1]];
+      const zoomK = viewScale / R;                     // >1 when zoomed in
+      const feats = citiesFC.features;
+      const visible = [];
+      for (const f of feats) {
+        const g = f.geometry.coordinates;
+        if (d3.geoDistance(g, center) >= Math.PI / 2 - 0.01) { f._px = null; continue; } // back side
+        const p = projection(g);
+        if (!p) { f._px = null; continue; }
+        f._px = p[0]; f._py = p[1];
+        visible.push(f);
+      }
+      gctx.save();
+      for (const f of visible) {
+        const pop = f.properties.pop_max || f.properties.pop_min || 0;
+        const isCap = +f.properties.adm0cap === 1;
+        const base = 1.6 + Math.min(3.4, Math.log10(pop + 10) - 2.2) + (isCap ? 1.1 : 0);
+        const r = Math.max(1.4, base * (0.85 + zoomK * 0.14));
+        const sel = f === selectedCity;
+        // soft glow
+        const glow = gctx.createRadialGradient(f._px, f._py, 0, f._px, f._py, r * 3.4);
+        glow.addColorStop(0, sel ? 'rgba(255,241,208,0.9)' : 'rgba(255,236,196,0.5)');
+        glow.addColorStop(1, 'rgba(255,236,196,0)');
+        gctx.fillStyle = glow;
+        gctx.beginPath(); gctx.arc(f._px, f._py, r * 3.4, 0, Math.PI * 2); gctx.fill();
+        // dot
+        gctx.beginPath(); gctx.arc(f._px, f._py, r, 0, Math.PI * 2);
+        gctx.fillStyle = sel ? '#fff' : (isCap ? '#ffe9a8' : '#ffd27a');
+        gctx.fill();
+        gctx.lineWidth = sel ? 2 : 1;
+        gctx.strokeStyle = sel ? '#ffcf4d' : 'rgba(40,30,10,0.55)';
+        gctx.stroke();
+      }
+      // labels: the largest cities that are visible, plus the selected one
+      const labelled = visible.slice().sort(function (a, b) {
+        return (b.properties.pop_max || 0) - (a.properties.pop_max || 0);
+      }).slice(0, zoomK > 2 ? 22 : 12);
+      if (selectedCity && labelled.indexOf(selectedCity) === -1 && selectedCity._px != null) {
+        labelled.push(selectedCity);
+      }
+      gctx.font = '10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      gctx.textAlign = 'left'; gctx.textBaseline = 'middle';
+      for (const f of labelled) {
+        const sel = f === selectedCity;
+        const name = f.properties.name || f.properties.nameascii || '';
+        gctx.shadowColor = 'rgba(0,0,0,0.9)'; gctx.shadowBlur = 5;
+        gctx.fillStyle = sel ? '#ffffff' : 'rgba(255,236,196,0.92)';
+        gctx.fillText(name, f._px + 7, f._py);
+        gctx.shadowBlur = 0;
+      }
       gctx.restore();
     }
     function brighten(hex) {
@@ -742,10 +807,18 @@
       const geo = projection.invert([px, py]);
       if (!geo || isNaN(geo[0])) return;
 
+      // City level: cities sit on the drilled state, so test them by pixel proximity.
+      if (mode === 'region') {
+        const city = cityHit(px, py);
+        if (city) { selectedCity = city; showCity(city); }
+        return;
+      }
+
+      // State level: click a state / province to select it.
       if (mode === 'country' && regionsFC) {
         let hit = null;
         for (const f of regionsFC.features) { if (d3.geoContains(f, geo)) { hit = f; break; } }
-        if (hit) { selectedRegion = hit; showRegion(hit, drillCountry); }
+        if (hit) { selectedRegion = hit; selectedCity = null; showRegion(hit, drillCountry); }
         return;
       }
 
@@ -772,6 +845,43 @@
       return admin1Loading;
     }
 
+    // Worldwide populated-places set (~5 MB), loaded once, then filtered per country.
+    function ensurePlaces() {
+      if (placesFC) return Promise.resolve(placesFC);
+      if (placesLoading) return placesLoading;
+      placesLoading = fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places_simple.geojson')
+        .then(function (r) { return r.json(); })
+        .then(function (j) { placesFC = j; return j; })
+        .catch(function (e) { placesLoading = null; throw e; });
+      return placesLoading;
+    }
+
+    // Drill from a state / province into its cities & towns. Cities are matched
+    // geometrically (point-in-polygon) so name mismatches never drop them.
+    function enterRegion(province) {
+      if (!province) return;
+      loadingEl.hidden = false; loadingEl.textContent = 'Loading cities…';
+      ensurePlaces().then(function (fc) {
+        let cities = fc.features.filter(function (f) {
+          return d3.geoContains(province, f.geometry.coordinates);
+        });
+        if (!cities.length) {
+          const pn = province.properties.name || province.properties.name_en;
+          cities = fc.features.filter(function (f) { return f.properties.adm1name === pn; });
+        }
+        loadingEl.hidden = true;
+        const pname = province.properties.name || province.properties.name_en || 'this region';
+        if (!cities.length) { flashMsg('No city data for ' + pname); return; }
+        citiesFC = { type: 'FeatureCollection', features: cities };
+        drillRegion = province; selectedRegion = province; selectedCity = null; mode = 'region';
+        backEl.hidden = false; backEl.textContent = '‹ Back to states'; zoomEl.hidden = true;
+        cardEl.classList.remove('show');
+        hintEl.style.display = ''; hintEl.innerHTML = '<span class="dot"></span>Click a city or town in ' + esc(pname);
+        const c = d3.geoCentroid(province);
+        flyTo(c[0], c[1], fitScale(province));
+      }).catch(function () { loadingEl.hidden = true; flashMsg('Could not load city data. Try again.'); });
+    }
+
     function enterCountry(country) {
       if (!country) return;
       ensureAdmin1().then(function (fc) {
@@ -783,8 +893,9 @@
         if (!regs.length) { flashMsg('No state / province data for ' + cname); return; }
         regs.forEach(function (r) { r._color = colorFor(r.properties.name || r.properties.name_en || r.properties.iso_3166_2 || 'x'); });
         regionsFC = { type: 'FeatureCollection', features: regs };
-        drillCountry = country; selectedRegion = null; mode = 'country';
-        backEl.hidden = false; zoomEl.hidden = true;
+        drillCountry = country; selectedRegion = null; selectedCity = null;
+        citiesFC = null; drillRegion = null; mode = 'country';
+        backEl.hidden = false; backEl.textContent = '‹ Back to globe'; zoomEl.hidden = true;
         cardEl.classList.remove('show');
         hintEl.style.display = ''; hintEl.innerHTML = '<span class="dot"></span>Click a state or province in ' + esc(cname);
         const c = d3.geoCentroid(country);
@@ -794,6 +905,7 @@
 
     function exitToWorld() {
       mode = 'world'; regionsFC = null; selectedRegion = null;
+      citiesFC = null; selectedCity = null; drillRegion = null;
       backEl.hidden = true; loadingEl.hidden = true;
       const country = drillCountry;
       if (country) {
@@ -803,6 +915,19 @@
         showCountry(country);
       } else {
         flyTo(-rotation[0], -rotation[1], R);
+      }
+    }
+
+    // Step back from the city view up to the state / province view of the country.
+    function exitToCountry() {
+      mode = 'country'; citiesFC = null; selectedCity = null; loadingEl.hidden = true;
+      const province = drillRegion; drillRegion = null;
+      selectedRegion = province || null;
+      backEl.hidden = false; backEl.textContent = '‹ Back to globe';
+      if (province) showRegion(province, drillCountry);
+      if (drillCountry) {
+        const c = d3.geoCentroid(drillCountry);
+        flyTo(c[0], c[1], fitScale(drillCountry));
       }
     }
 
@@ -819,15 +944,23 @@
     const nameEl = document.getElementById('name');
     const capEl = document.getElementById('capital');
     const leaderEl = document.getElementById('leader');
+    const capKEl = document.getElementById('capK');
+    const leaderKEl = document.getElementById('leaderK');
     const bioWrap = document.getElementById('bioWrap');
     const backEl = document.getElementById('back');
     const zoomEl = document.getElementById('zoom');
     const loadingEl = document.getElementById('loading');
-    backEl.addEventListener('click', exitToWorld);
-    zoomEl.addEventListener('click', function () { if (selected) enterCountry(selected); });
+    backEl.addEventListener('click', function () {
+      if (mode === 'region') exitToCountry();   // cities → states
+      else exitToWorld();                       // states → globe
+    });
+    zoomEl.addEventListener('click', function () {
+      if (mode === 'country' && selectedRegion) enterRegion(selectedRegion); // state → cities
+      else if (selected) enterCountry(selected);                             // country → states
+    });
 
     // ---- scroll / pinch to zoom ----
-    const MIN_SCALE = R * 0.6, MAX_SCALE = R * 5;
+    const MIN_SCALE = R * 0.6, MAX_SCALE = R * 12;
     stage.addEventListener('wheel', function (e) {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
@@ -864,12 +997,13 @@
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
       eyebrowEl.textContent = 'Country';
+      capKEl.textContent = 'Capital'; leaderKEl.textContent = 'Current leader';
       nameEl.textContent = name;
 
       // flag
       const code = alpha2(f);
       setFlag(code ? 'https://flagcdn.com/w160/' + code.toLowerCase() + '.png' : null, name + ' flag');
-      zoomEl.hidden = false;
+      zoomEl.textContent = 'Explore states & provinces →'; zoomEl.hidden = false;
 
       // reset fields
       capEl.textContent = '…';
@@ -907,8 +1041,11 @@
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
       eyebrowEl.textContent = (country ? country.properties.name + ' · ' : '') + cap1(type);
+      capKEl.textContent = 'Capital'; leaderKEl.textContent = 'Current leader';
       nameEl.textContent = name;
-      zoomEl.hidden = true;
+      // offer the city drill (unless we're already viewing this state's cities)
+      if (mode === 'region') { zoomEl.hidden = true; }
+      else { zoomEl.textContent = 'Explore cities & towns →'; zoomEl.hidden = false; }
       setFlag(null);
       capEl.textContent = '…';
       leaderEl.innerHTML = '<span class="muted">…</span>';
@@ -934,6 +1071,95 @@
       });
     }
     function cap1(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+    // ---- city (populated place) info ----
+    function cityHit(px, py) {
+      if (!citiesFC) return null;
+      let best = null, bestD = 16 * 16; // 16px pick radius
+      for (const f of citiesFC.features) {
+        if (f._px == null) continue;
+        const dx = f._px - px, dy = f._py - py, d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = f; }
+      }
+      return best;
+    }
+
+    function showCity(f) {
+      const id = ++reqId;
+      const p = f.properties;
+      const name = p.name || p.nameascii || 'City';
+      const isCap = +p.adm0cap === 1;
+      hintEl.style.display = 'none';
+      cardEl.classList.add('show');
+      const place = [p.adm1name, p.adm0name].filter(Boolean).join(' · ');
+      eyebrowEl.textContent = (isCap ? 'Capital city' : 'City') + (place ? ' · ' + place : '');
+      capKEl.textContent = 'Population'; leaderKEl.textContent = 'Mayor';
+      nameEl.textContent = name;
+      setFlag(null);
+      zoomEl.hidden = true;
+      const pop = p.pop_max || p.pop_min || 0;
+      capEl.innerHTML = pop ? '≈ ' + Number(pop).toLocaleString() + '<small>metro estimate</small>' : '<span class="muted">Not available</span>';
+      leaderEl.innerHTML = '<span class="muted">…</span>';
+      bioWrap.innerHTML = '<div class="skeleton"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>';
+
+      // Wikipedia overview + the article's linked Wikidata entity (for a live mayor).
+      const titles = [];
+      if (p.adm1name) titles.push(name + ', ' + p.adm1name);
+      if (p.adm0name) titles.push(name + ', ' + p.adm0name);
+      titles.push(name);
+      fetchWikiPageBest(titles).then(function (page) {
+        if (id !== reqId) return;
+        bioWrap.innerHTML = '<p class="bio"></p>';
+        bioWrap.querySelector('.bio').textContent = (page.extract && page.extract !== '—') ? page.extract : 'No description available.';
+        if (page.qid) {
+          fetchCityLeaders(page.qid).then(function (facts) { if (id === reqId) renderLeaders(facts.leaders); });
+        } else { renderLeaders([]); }
+      });
+    }
+
+    // Wikipedia intro + the page's linked Wikidata QID (via pageprops).
+    function fetchWikiPage(title) {
+      const params = 'action=query&titles=' + encodeURIComponent(title)
+        + '&prop=extracts|pageprops&ppprop=wikibase_item&exintro=1&exchars=600&explaintext=1&redirects=1&format=json&origin=*';
+      return fetch('https://en.wikipedia.org/w/api.php?' + params)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const pages = j.query && j.query.pages;
+          if (!pages) return { extract: '—', qid: null };
+          const page = Object.values(pages)[0];
+          if (!page || page.missing !== undefined) return { extract: '—', qid: null };
+          const extract = page.extract ? page.extract.replace(/\n+/g, ' ').trim() : '—';
+          const qid = (page.pageprops && page.pageprops.wikibase_item) || null;
+          return { extract: extract || '—', qid: qid };
+        }).catch(function () { return { extract: '—', qid: null }; });
+    }
+    // Try titles in order (disambiguated first), return the first real article.
+    function fetchWikiPageBest(titles) {
+      let i = 0;
+      function next() {
+        if (i >= titles.length) return Promise.resolve({ extract: '—', qid: null });
+        return fetchWikiPage(titles[i++]).then(function (pg) {
+          return (pg.extract && pg.extract !== '—') ? pg : next();
+        });
+      }
+      return next();
+    }
+    // Current mayor / head of government (P6) for a city's Wikidata entity.
+    function fetchCityLeaders(qid) {
+      const q = 'SELECT ?hog ?hogLabel ?officeLabel WHERE { BIND(wd:' + qid + ' AS ?r)'
+        + ' OPTIONAL { ?r wdt:P6 ?hog. OPTIONAL { ?r wdt:P1313 ?office. } }'
+        + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". } } LIMIT 1';
+      const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q);
+      return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const b = (j.results.bindings || [])[0] || {};
+          const v = function (k) { return b[k] && b[k].value; };
+          const hog = v('hogLabel'), office = v('officeLabel');
+          const leaders = hog ? [{ name: hog, role: (office && !isQid(office)) ? office : 'Mayor' }] : [];
+          return Promise.resolve(resolveQids({ capital: null, leaders: leaders })).then(function (rf) { return { leaders: rf.leaders }; });
+        }).catch(function () { return { leaders: [] }; });
+    }
 
     function fetchWikiSummary(title) {
       const params = 'action=query&titles=' + encodeURIComponent(title)
