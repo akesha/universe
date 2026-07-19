@@ -224,6 +224,14 @@
     font-family: "Spectral", Georgia, serif; font-size: 16px; line-height: 1.55;
     margin: 0; text-wrap: pretty; color: #cfd4df;
   }
+  .more {
+    display: inline-block; margin-top: 10px; text-decoration: none;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--ink-soft);
+    border-bottom: 1px solid rgba(255,255,255,0.18); padding-bottom: 2px;
+    transition: color .15s, border-color .15s;
+  }
+  .more:hover { color: var(--ink); border-color: rgba(255,255,255,0.5); }
   .skeleton { display: grid; gap: 9px; }
   .skeleton .bar {
     height: 12px; border-radius: 3px;
@@ -1282,6 +1290,18 @@
       });
     }
 
+    // Long digit strings get mangled by both the browser voice and ElevenLabs —
+    // "8,336,599" comes back out as eight thousand — so anything spoken gets
+    // words instead of digits.
+    function spokenCount(n) {
+      n = Number(n) || 0;
+      const r = function (x) { return String(Math.round(x * 10) / 10); };
+      if (n >= 1e9) return r(n / 1e9) + ' billion';
+      if (n >= 1e6) return r(n / 1e6) + ' million';
+      if (n >= 1e3) return Math.round(n / 1e3) + ' thousand';
+      return String(Math.round(n));
+    }
+
     // Build a spoken script from whatever the card currently shows.
     function cardNarration() {
       const parts = [];
@@ -1289,7 +1309,8 @@
       if (name && name !== '—') parts.push(name + '.');
       const eb = eyebrowEl.textContent.replace(/·/g, ',').trim();
       if (eb) parts.push(eb + '.');
-      const cv = capEl.textContent.replace(/metro estimate/i, '').replace(/≈/g, 'approximately ').trim();
+      const cv = (capEl.dataset.spoken
+        || capEl.textContent.replace(/metro estimate/i, '').replace(/≈/g, 'approximately ')).trim();
       if (cv && cv !== '…' && cv !== '—' && !/not available/i.test(cv)) parts.push(capKEl.textContent + ': ' + cv + '.');
       const lv = leaderEl.textContent.replace(/([a-z.])([A-Z])/g, '$1, $2').trim();
       if (lv && lv !== '…' && !/not available/i.test(lv)) parts.push(leaderKEl.textContent + ': ' + lv + '.');
@@ -1629,7 +1650,7 @@
       zoomEl.textContent = 'Explore states & provinces →'; zoomEl.hidden = false;
 
       // reset fields
-      capEl.textContent = '…';
+      capEl.textContent = '…'; delete capEl.dataset.spoken;
       leaderEl.innerHTML = '<span class="muted">…</span>';
       bioWrap.innerHTML = '<div class="skeleton"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>';
 
@@ -1641,10 +1662,9 @@
       });
 
       // ---- bio (stable) from Claude ----
-      fetchWikiSummary(name).then(function (text) {
+      fetchWikiSummary(name).then(function (res) {
         if (id !== reqId) return;
-        bioWrap.innerHTML = '<p class="bio"></p>';
-        bioWrap.querySelector('.bio').textContent = text;
+        renderBio(res.text, res.title);
       });
     }
 
@@ -1671,7 +1691,7 @@
       if (mode === 'region') { zoomEl.hidden = true; }
       else { zoomEl.textContent = 'Explore cities & towns →'; zoomEl.hidden = false; }
       setFlag(null);
-      capEl.textContent = '…';
+      capEl.textContent = '…'; delete capEl.dataset.spoken;
       leaderEl.innerHTML = '<span class="muted">…</span>';
       bioWrap.innerHTML = '<div class="skeleton"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>';
 
@@ -1684,13 +1704,12 @@
 
       // Try "Niger State" first, fall back to just "Niger" if not found
       const regionTitle = name + ' ' + cap1(type);
-      fetchWikiSummary(regionTitle).then(function (text) {
+      fetchWikiSummary(regionTitle).then(function (res) {
         if (id !== reqId) return;
-        if (text !== '—') { bioWrap.innerHTML = '<p class="bio"></p>'; bioWrap.querySelector('.bio').textContent = text; return; }
-        return fetchWikiSummary(name).then(function (t2) {
+        if (res.text !== '—') { renderBio(res.text, res.title); return; }
+        return fetchWikiSummary(name).then(function (res2) {
           if (id !== reqId) return;
-          bioWrap.innerHTML = '<p class="bio"></p>';
-          bioWrap.querySelector('.bio').textContent = t2;
+          renderBio(res2.text, res2.title);
         });
       });
     }
@@ -1724,6 +1743,7 @@
       setFlag(null);
       zoomEl.hidden = true;
       capEl.innerHTML = c.pop ? '≈ ' + Number(c.pop).toLocaleString() : '<span class="muted">Not available</span>';
+      if (c.pop) capEl.dataset.spoken = 'about ' + spokenCount(c.pop); else delete capEl.dataset.spoken;
       leaderEl.innerHTML = '<span class="muted">…</span>';
       bioWrap.innerHTML = '<div class="skeleton"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>';
 
@@ -1734,12 +1754,51 @@
       titles.push(name);
       fetchWikiPageBest(titles).then(function (page) {
         if (id !== reqId) return;
-        bioWrap.innerHTML = '<p class="bio"></p>';
-        bioWrap.querySelector('.bio').textContent = (page.extract && page.extract !== '—') ? page.extract : 'No description available.';
+        renderBio(page.extract, page.title);
         if (page.qid) {
-          fetchCityLeaders(page.qid).then(function (facts) { if (id === reqId) renderLeaders(facts.leaders); });
+          fetchCityLeaders(page.qid).then(function (facts) {
+            if (id !== reqId) return;
+            renderLeaders(facts.leaders);
+            if (facts.flag) setFlag(facts.flag, name + ' flag');
+          });
         } else { renderLeaders([]); }
       });
+    }
+
+    // Wikipedia's intro extract is cut to a character budget, which usually
+    // lands mid-sentence ("…the Tokyo Metropolitan Government administers…").
+    // Back up to the last complete sentence and let the link carry the rest.
+    const ABBREV = /(?:^|[\s(])(?:[A-Z]|Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Gen|Col|Lt|vs|etc|approx|est|ca|no|pop)\.$/;
+    function trimToSentence(text) {
+      const t = (text || '').replace(/\s*(?:…|\.\.\.)\s*$/, '').trim();
+      if (!t) return t;
+      if (/[.!?]["')\]]?$/.test(t)) return t;           // already ends cleanly
+      const re = /[.!?]["')\]]?(?=\s)/g;
+      let cut = -1, m;
+      while ((m = re.exec(t)) !== null) {
+        const end = m.index + m[0].length;
+        if (!ABBREV.test(t.slice(0, end))) cut = end;   // skip "U.S." and friends
+      }
+      // only back up if a decent amount of text survives; otherwise keep the
+      // ellipsis rather than throwing most of the description away
+      return cut > t.length * 0.4 ? t.slice(0, cut).trim() : t + '…';
+    }
+
+    // Description paragraph plus a way out to the rest of the article.
+    function renderBio(text, title) {
+      if (!text || text === '—') {
+        bioWrap.innerHTML = '<p class="bio">No description available.</p>';
+        return;
+      }
+      bioWrap.innerHTML = '<p class="bio"></p>';
+      bioWrap.querySelector('.bio').textContent = trimToSentence(text);
+      if (!title) return;
+      const a = document.createElement('a');
+      a.className = 'more';
+      a.href = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g, '_'));
+      a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = 'Read the full article on Wikipedia →';
+      bioWrap.appendChild(a);
     }
 
     // Wikipedia intro + the page's linked Wikidata QID (via pageprops).
@@ -1755,24 +1814,27 @@
           if (!page || page.missing !== undefined) return { extract: '—', qid: null };
           const extract = page.extract ? page.extract.replace(/\n+/g, ' ').trim() : '—';
           const qid = (page.pageprops && page.pageprops.wikibase_item) || null;
-          return { extract: extract || '—', qid: qid };
-        }).catch(function () { return { extract: '—', qid: null }; });
+          return { extract: extract || '—', qid: qid, title: page.title || title };
+        }).catch(function () { return { extract: '—', qid: null, title: null }; });
     }
     // Try titles in order (disambiguated first), return the first real article.
     function fetchWikiPageBest(titles) {
       let i = 0;
       function next() {
-        if (i >= titles.length) return Promise.resolve({ extract: '—', qid: null });
+        if (i >= titles.length) return Promise.resolve({ extract: '—', qid: null, title: null });
         return fetchWikiPage(titles[i++]).then(function (pg) {
           return (pg.extract && pg.extract !== '—') ? pg : next();
         });
       }
       return next();
     }
-    // Current mayor / head of government (P6) for a city's Wikidata entity.
+    // Current mayor / head of government (P6) and the civic flag (P41) for a
+    // city's Wikidata entity. Plenty of cities fly their own flag — Tokyo among
+    // them — so the card shows it the same way a country shows its national one.
     function fetchCityLeaders(qid) {
-      const q = 'SELECT ?hog ?hogLabel ?officeLabel WHERE { BIND(wd:' + qid + ' AS ?r)'
+      const q = 'SELECT ?hog ?hogLabel ?officeLabel ?flag WHERE { BIND(wd:' + qid + ' AS ?r)'
         + ' OPTIONAL { ?r wdt:P6 ?hog. OPTIONAL { ?r wdt:P1313 ?office. } }'
+        + ' OPTIONAL { ?r wdt:P41 ?flag. }'
         + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". } } LIMIT 1';
       const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q);
       return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
@@ -1782,22 +1844,25 @@
           const v = function (k) { return b[k] && b[k].value; };
           const hog = v('hogLabel'), office = v('officeLabel');
           const leaders = hog ? [{ name: hog, role: (office && !isQid(office)) ? office : 'Mayor' }] : [];
-          return Promise.resolve(resolveQids({ capital: null, leaders: leaders })).then(function (rf) { return { leaders: rf.leaders }; });
-        }).catch(function () { return { leaders: [] }; });
+          let flag = v('flag');
+          if (flag) flag = flag.replace(/^http:/, 'https:') + '?width=160';
+          return Promise.resolve(resolveQids({ capital: null, leaders: leaders }))
+            .then(function (rf) { return { leaders: rf.leaders, flag: flag || null }; });
+        }).catch(function () { return { leaders: [], flag: null }; });
     }
 
     function fetchWikiSummary(title) {
       const params = 'action=query&titles=' + encodeURIComponent(title)
-        + '&prop=extracts&exintro=1&exchars=600&explaintext=1&redirects=1&format=json&origin=*';
+        + '&prop=extracts&exintro=1&exchars=700&explaintext=1&redirects=1&format=json&origin=*';
       return fetch('https://en.wikipedia.org/w/api.php?' + params)
         .then(function (r) { return r.json(); })
         .then(function (j) {
           const pages = j.query && j.query.pages;
-          if (!pages) return '—';
+          if (!pages) return { text: '—', title: null };
           const page = Object.values(pages)[0];
-          if (!page || page.missing !== undefined || !page.extract) return '—';
-          return page.extract.replace(/\n+/g, ' ').trim();
-        }).catch(function () { return '—'; });
+          if (!page || page.missing !== undefined || !page.extract) return { text: '—', title: null };
+          return { text: page.extract.replace(/\n+/g, ' ').trim(), title: page.title || title };
+        }).catch(function () { return { text: '—', title: null }; });
     }
 
     // Query Wikidata for a subdivision: capital, head of government, office title, flag.
