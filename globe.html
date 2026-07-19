@@ -650,15 +650,37 @@
       gctx.beginPath(); path(sphere); gctx.clip();
       for (let ty = ty0; ty <= ty1; ty++) {
         for (let tx = tx0; tx <= tx1; tx++) {
-          const img = tileAt(z, ((tx % n) + n) % n, ty);   // wrap at the date line
-          if (!img || !img.ok) continue;
-          gctx.drawImage(img,
-            CENTER[0] + (tx * TILE_PX - mx) * s,
-            CENTER[1] + (ty * TILE_PX - my) * s,
-            w + 0.5, w + 0.5);                             // overdraw hides seams
+          const wx = ((tx % n) + n) % n;                   // wrap at the date line
+          const dx = CENTER[0] + (tx * TILE_PX - mx) * s;
+          const dy = CENTER[1] + (ty * TILE_PX - my) * s;
+          const img = tileAt(z, wx, ty);
+          if (img && img.ok) {
+            gctx.drawImage(img, dx, dy, w + 0.5, w + 0.5); // overdraw hides seams
+          } else {
+            drawCoarser(z, wx, ty, dx, dy, w);
+          }
         }
       }
       gctx.restore();
+    }
+
+    // Stand-in for a tile that hasn't arrived: the matching quadrant of an
+    // already-loaded tile from a lower zoom, upscaled. It's soft, but it means
+    // a slow connection shows a blurry map sharpening into focus rather than
+    // holes of bright political colour. Only cached ancestors are drawn — with
+    // one exception, COARSE levels up, which is requested so there is always
+    // something to fall back on when a view is opened cold.
+    const COARSE = 3;
+    function drawCoarser(z, x, y, dx, dy, w) {
+      for (let k = 1; k <= 6 && z - k >= 2; k++) {
+        const px = x >> k, py = y >> k;
+        const img = (k === COARSE) ? tileAt(z - k, px, py) : tileCache.get((z - k) + '/' + px + '/' + py);
+        if (!img || !img.ok) continue;
+        const sub = TILE_PX / (1 << k);                    // quadrant side, in tile px
+        gctx.drawImage(img, (x - (px << k)) * sub, (y - (py << k)) * sub, sub, sub,
+          dx, dy, w + 0.5, w + 0.5);
+        return;
+      }
     }
 
     let countriesFC = null, selected = null, rotation = [0, -12, 0], viewScale = R;
