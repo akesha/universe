@@ -1790,7 +1790,10 @@
     // Wikipedia's intro extract is cut to a character budget, which usually
     // lands mid-sentence ("…the Tokyo Metropolitan Government administers…").
     // Back up to the last complete sentence and let the link carry the rest.
-    const ABBREV = /(?:^|[\s(])(?:[A-Z]|Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Gen|Col|Lt|vs|etc|approx|est|ca|no|pop)\.$/;
+    // A period is not a sentence end when it belongs to an abbreviation. Two
+    // shapes to catch: dotted acronyms, where the letters are chained through
+    // the dots ("U.S.", "D.C.", "e.g."), and plain shortened words ("St.").
+    const ABBREV = /(?:^|[\s("'])(?:(?:[A-Za-z]\.)+|(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Gen|Col|Lt|Rev|Mt|Ft|Ave|Rd|vs|etc|approx|est|ca|no|pop)\.)$/;
     function trimToSentence(text) {
       const t = (text || '').replace(/\s*(?:…|\.\.\.)\s*$/, '').trim();
       if (!t) return t;
