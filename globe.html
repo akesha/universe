@@ -212,6 +212,14 @@
   }
   .loading[hidden] { display: none; }
 
+  /* Esri's terms require the imagery credit to be visible while tiles are on screen */
+  .attrib {
+    position: absolute; right: 8px; bottom: 6px; z-index: 6; pointer-events: none;
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.05em;
+    color: rgba(255,255,255,.62); text-shadow: 0 1px 3px rgba(0,0,0,.85);
+  }
+  .attrib[hidden] { display: none; }
+
   .bio {
     font-family: "Spectral", Georgia, serif; font-size: 16px; line-height: 1.55;
     margin: 0; text-wrap: pretty; color: #cfd4df;
@@ -251,6 +259,7 @@
       <canvas id="globe"></canvas>
       <button id="back" class="backbtn" hidden type="button">‹ Back to globe</button>
       <div id="loading" class="loading" hidden>Loading regions…</div>
+      <div id="attrib" class="attrib" hidden>Imagery: Esri, Maxar, Earthstar Geographics</div>
     </div>
     <div id="panel">
       <div class="searchwrap">
@@ -331,6 +340,7 @@
     const stage = document.getElementById('stage');
     const globeCanvas = document.getElementById('globe');
     const whirlCanvas = document.getElementById('whirl');
+    const attribEl = document.getElementById('attrib');
     const gctx = setup(globeCanvas);
     const wctx = setup(whirlCanvas);
 
@@ -564,6 +574,85 @@
       gctx.drawImage(earthBuf, 0, 0, SIZE, SIZE);
     }
 
+    // ---- close range: real satellite tiles (Esri World Imagery) ------------
+    // The Blue Marble texture above is ~20 km per pixel — fine for the whole
+    // globe, useless once you drill into a state. Zoomed in past TILE_IN the
+    // view spans a small enough arc that Web Mercator and the orthographic
+    // sphere are locally the same shape, so map tiles can be painted straight
+    // onto the canvas with one uniform scale factor. The two renderers
+    // crossfade between TILE_IN and TILE_FULL.
+    const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    const TILE_PX = 256, TILE_MAXZ = 19;
+    const TILE_IN = R * 9, TILE_FULL = R * 16;
+    const tileCache = new Map();          // "z/x/y" -> Image, .ok once decoded
+    let tilesInFlight = 0;
+
+    function tileAt(z, x, y) {
+      const key = z + '/' + x + '/' + y;
+      const hit = tileCache.get(key);
+      if (hit) return hit;
+      if (tilesInFlight > 8) return null;  // fetch the rest on a later frame
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.ok = false;
+      tilesInFlight++;
+      img.onload = function () { img.ok = true; tilesInFlight--; };
+      img.onerror = function () { tilesInFlight--; tileCache.delete(key); };
+      tileCache.set(key, img);
+      img.src = TILE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+      if (tileCache.size > 500) tileCache.delete(tileCache.keys().next().value);
+      return img;
+    }
+
+    function mercX(lonDeg, world) { return (lonDeg + 180) / 360 * world; }
+    function mercY(latDeg, world) {
+      const s = Math.sin(latDeg * DEG2RAD);
+      return world * (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI));
+    }
+    // 0 while the globe texture carries the view, 1 once tiles fully take over
+    function tileMix() {
+      if (viewScale <= TILE_IN) return 0;
+      return Math.min(1, (viewScale - TILE_IN) / (TILE_FULL - TILE_IN));
+    }
+    // Scale that puts the view at a given tile zoom — used to fly to a city at
+    // a level where its streets and blocks actually resolve.
+    function scaleForTileZoom(z, latDeg) {
+      const cosLat = Math.max(0.05, Math.cos(latDeg * DEG2RAD));
+      return TILE_PX * Math.pow(2, z) / (cosLat * 2 * Math.PI * DPR);
+    }
+
+    function renderTiles(alpha) {
+      const rot = projection.rotate();
+      const lon0 = -rot[0], lat0 = Math.max(-85, Math.min(85, -rot[1]));
+      const cosLat = Math.cos(lat0 * DEG2RAD);
+      if (cosLat < 1e-4) return;
+      // the zoom whose tile pixels land closest to one device pixel
+      const z = Math.max(2, Math.min(TILE_MAXZ,
+        Math.round(Math.log2(viewScale * cosLat * 2 * Math.PI * DPR / TILE_PX))));
+      const world = TILE_PX * Math.pow(2, z), n = 1 << z;
+      const s = viewScale * cosLat * 2 * Math.PI / world;   // canvas units per mercator px
+      const mx = mercX(lon0, world), my = mercY(lat0, world);
+      const half = SIZE / 2 / s + 1;
+      const tx0 = Math.floor((mx - half) / TILE_PX), tx1 = Math.floor((mx + half) / TILE_PX);
+      const ty0 = Math.max(0, Math.floor((my - half) / TILE_PX));
+      const ty1 = Math.min(n - 1, Math.floor((my + half) / TILE_PX));
+      const w = TILE_PX * s;
+      gctx.save();
+      gctx.globalAlpha = alpha;
+      gctx.beginPath(); path(sphere); gctx.clip();
+      for (let ty = ty0; ty <= ty1; ty++) {
+        for (let tx = tx0; tx <= tx1; tx++) {
+          const img = tileAt(z, ((tx % n) + n) % n, ty);   // wrap at the date line
+          if (!img || !img.ok) continue;
+          gctx.drawImage(img,
+            CENTER[0] + (tx * TILE_PX - mx) * s,
+            CENTER[1] + (ty * TILE_PX - my) * s,
+            w + 0.5, w + 0.5);                             // overdraw hides seams
+        }
+      }
+      gctx.restore();
+    }
+
     let countriesFC = null, selected = null, rotation = [0, -12, 0], viewScale = R;
     let mode = 'world', regionsFC = null, selectedRegion = null, drillCountry = null;
     let admin1FC = null, admin1Loading = null;
@@ -657,6 +746,27 @@
       gctx.restore();
     }
 
+    // Borders for the drilled view. Drawn over the flat fills, and again over
+    // the satellite tiles once those fade in, so the state you picked stays
+    // legible against the imagery.
+    function strokeRegionEdges() {
+      if (!regionsFC) return;
+      gctx.beginPath();
+      regionsFC.features.forEach(function (f) { path(f); });
+      gctx.strokeStyle = 'rgba(255,255,255,0.6)'; gctx.lineWidth = 0.6; gctx.stroke();
+      if (drillCountry) {
+        gctx.beginPath(); path(drillCountry);
+        gctx.strokeStyle = INK; gctx.globalAlpha = 0.45; gctx.lineWidth = 1; gctx.stroke();
+        gctx.globalAlpha = 1;
+      }
+      if (selectedRegion) {
+        gctx.beginPath(); path(selectedRegion);
+        gctx.strokeStyle = '#ffffff'; gctx.lineWidth = 3; gctx.stroke();
+        gctx.beginPath(); path(selectedRegion);
+        gctx.strokeStyle = INK; gctx.lineWidth = 1.4; gctx.stroke();
+      }
+    }
+
     // ---- globe ----
     function drawGlobe() {
       gctx.clearRect(0, 0, SIZE, SIZE);
@@ -678,21 +788,7 @@
           gctx.fill();
         });
         gctx.globalAlpha = 1;
-        gctx.beginPath();
-        regionsFC.features.forEach(function (f) { path(f); });
-        gctx.strokeStyle = 'rgba(255,255,255,0.6)'; gctx.lineWidth = 0.6; gctx.stroke();
-        // outline the drilled country
-        if (drillCountry) {
-          gctx.beginPath(); path(drillCountry);
-          gctx.strokeStyle = INK; gctx.globalAlpha = 0.45; gctx.lineWidth = 1; gctx.stroke();
-          gctx.globalAlpha = 1;
-        }
-        if (selectedRegion) {
-          gctx.beginPath(); path(selectedRegion);
-          gctx.strokeStyle = '#ffffff'; gctx.lineWidth = 3; gctx.stroke();
-          gctx.beginPath(); path(selectedRegion);
-          gctx.strokeStyle = INK; gctx.lineWidth = 1.4; gctx.stroke();
-        }
+        strokeRegionEdges();
       } else if (texReady) {
         // photographic satellite earth
         gctx.save();
@@ -733,9 +829,24 @@
         }
       }
 
-      // animated cloud systems, then day/night shading + atmospheric rim
-      drawClouds();
-      drawTerminator();
+      // close range: real imagery over whatever the globe just painted
+      const tmix = tileMix();
+      if (attribEl.hidden === (tmix > 0)) attribEl.hidden = !(tmix > 0);
+      if (tmix > 0) {
+        renderTiles(tmix);
+        gctx.save(); gctx.globalAlpha = tmix; strokeRegionEdges(); gctx.restore();
+      }
+
+      // animated cloud systems, then day/night shading + atmospheric rim.
+      // Both are globe-scale effects — they read as smears from a few hundred
+      // feet up, so they fade out as the tiles take over.
+      if (tmix < 1) {
+        gctx.save();
+        gctx.globalAlpha = 1 - tmix;
+        drawClouds();
+        drawTerminator();
+        gctx.restore();
+      }
       gctx.save();
       gctx.beginPath(); path(sphere);
       gctx.strokeStyle = 'rgba(150,200,255,0.55)'; gctx.lineWidth = 1.5;
@@ -888,6 +999,10 @@
       tween = requestAnimationFrame(step);
     }
 
+    // Where a selected city lands: tile zoom 11 puts the whole built-up area in
+    // frame, on imagery rather than a coloured polygon.
+    function cityScale(lat) { return scaleForTileZoom(11, lat); }
+
     // Scale needed to frame a feature within the viewport (orthographic).
     function fitScale(feature) {
       const c = d3.geoCentroid(feature);
@@ -944,7 +1059,7 @@
       // City level: cities sit on the drilled state, so test them by pixel proximity.
       if (mode === 'region') {
         const city = cityHit(px, py);
-        if (city) { selectedCity = city; showCity(city); }
+        if (city) { selectedCity = city; flyTo(city.lon, city.lat, cityScale(city.lat)); showCity(city); }
         return;
       }
 
@@ -980,7 +1095,7 @@
     }
 
     // Worldwide cities & towns (~5.7 MB TSV), loaded once, then filtered per state.
-    // GeoNames columns: 1 name · 4 lat · 5 lon · 7 feature-code · 8 country · 14 pop
+    // GeoNames columns: 1 name · 4 lat · 5 lon · 7 feature-code · 8 country · 10 admin1 · 14 pop
     function ensurePlaces() {
       if (placesArr) return Promise.resolve(placesArr);
       if (placesLoading) return placesLoading;
@@ -994,7 +1109,7 @@
             const c = lines[i].split('\t');
             const lat = +c[4], lon = +c[5];
             if (!isFinite(lat) || !isFinite(lon)) continue;
-            out.push({ name: c[1], lon: lon, lat: lat, pop: +c[14] || 0, fcode: c[7], cc: c[8], _px: null });
+            out.push({ name: c[1], lon: lon, lat: lat, pop: +c[14] || 0, fcode: c[7], cc: c[8], a1: c[10], _px: null });
           }
           placesArr = out; return out;
         })
@@ -1297,7 +1412,7 @@
           const city = selectedCity || (cityList || []).slice().sort(function (a, b) { return b.pop - a.pop; })[0] || big;
           if (city) {
             selectedCity = city;
-            flyTo(city.lon, city.lat, R * 8);
+            flyTo(city.lon, city.lat, cityScale(city.lat));
             showCity(city);
             await tourSleep(1800); if (!alive()) return;   // let the overview + mayor load
             await say(cardNarration(), 22000);
@@ -1326,6 +1441,19 @@
         countriesFC.features.forEach(function (f) { const a = alpha2(f); if (a) ccName[a] = f.properties.name; });
       }
       return (ccName && ccName[cc]) || cc || '';
+    }
+    // GeoNames admin1 codes for the countries with the most name collisions,
+    // so a search result can name its state / province without another fetch —
+    // that is what tells the four Bloomingtons apart. Anywhere else the code is
+    // meaningless to a reader and the lookup just misses, leaving it out.
+    const ADMIN1 = {
+      US: { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', PR: 'Puerto Rico' },
+      CA: { '01': 'Alberta', '02': 'British Columbia', '03': 'Manitoba', '04': 'New Brunswick', '05': 'Newfoundland and Labrador', '07': 'Nova Scotia', '08': 'Ontario', '09': 'Prince Edward Island', '10': 'Quebec', '11': 'Saskatchewan', '12': 'Yukon', '13': 'Northwest Territories', '14': 'Nunavut' },
+      AU: { '01': 'Australian Capital Territory', '02': 'New South Wales', '03': 'Northern Territory', '04': 'Queensland', '05': 'South Australia', '06': 'Tasmania', '07': 'Victoria', '08': 'Western Australia' }
+    };
+    function regionNameFor(city) {
+      const table = ADMIN1[city.cc];
+      return (table && table[city.a1]) || '';
     }
     // match at the start of the name or of any word inside it
     function matchRank(name, nq) {
@@ -1367,8 +1495,12 @@
         const li = document.createElement('li');
         const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = h.name;
         const ctx = document.createElement('span'); ctx.className = 'ctx';
-        ctx.textContent = h.kind === 'country' ? 'Country'
-          : countryNameFor(h.city.cc) + (h.pop ? ' · ' + Math.round(h.pop / 1000) + 'k' : '');
+        if (h.kind === 'country') {
+          ctx.textContent = 'Country';
+        } else {
+          const where = [regionNameFor(h.city), countryNameFor(h.city.cc)].filter(Boolean).join(', ');
+          ctx.textContent = where + (h.pop ? ' · ' + Math.round(h.pop / 1000) + 'k' : '');
+        }
         li.appendChild(nm); li.appendChild(ctx);
         li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(i); });
         resultsEl.appendChild(li);
@@ -1418,7 +1550,7 @@
           const target = (cityList && cityList.indexOf(city) !== -1) ? city
             : (cityList || []).find(function (c) { return c.name === city.name; }) || city;
           selectedCity = target;
-          flyTo(target.lon, target.lat, R * 8);
+          flyTo(target.lon, target.lat, cityScale(target.lat));
           showCity(target);
         });
       }).catch(function () { loadingEl.hidden = true; });
@@ -1444,10 +1576,16 @@
     searchEl.addEventListener('blur', function () { setTimeout(closeResults, 120); });
 
     // ---- scroll / pinch to zoom ----
-    const MIN_SCALE = R * 0.6, MAX_SCALE = R * 40;
+    // The ceiling is set by the tile pyramid rather than the vector data: z19 at
+    // 256 px a tile is roughly half a metre per pixel.
+    const MIN_SCALE = R * 0.6, MAX_SCALE = scaleForTileZoom(TILE_MAXZ, 0);
+    // one wheel notch is a bigger multiplier once tiles are running, so the trip
+    // from a whole state down to a city block isn't a hundred scrolls
+    function zoomStep() { return viewScale > TILE_IN ? 1.2 : 1.08; }
     stage.addEventListener('wheel', function (e) {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+      const k = zoomStep();
+      const factor = e.deltaY < 0 ? k : 1 / k;
       viewScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, viewScale * factor));
       projection.scale(viewScale);
     }, { passive: false });
