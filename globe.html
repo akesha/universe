@@ -1724,15 +1724,18 @@
         if (facts.flag) setFlag(facts.flag, name + ' flag');
       });
 
-      // Try "Niger State" first, fall back to just "Niger" if not found
-      const regionTitle = name + ' ' + cap1(type);
-      fetchWikiSummary(regionTitle).then(function (res) {
+      // Ask Wikidata which article belongs to this exact subdivision. Guessing
+      // the title from the name lands "Pennsylvania State" on Penn State
+      // University and "Washington State" on a disambiguation page. Only when
+      // the feature carries no id do we fall back to guessing — "Niger State"
+      // first, since plain "Niger" is the country, then the bare name.
+      fetchWikiTitleForQid(p.wikidataid).then(function (title) {
         if (id !== reqId) return;
-        if (res.text !== '—') { renderBio(res.text, res.title); return; }
-        return fetchWikiSummary(name).then(function (res2) {
-          if (id !== reqId) return;
-          renderBio(res2.text, res2.title);
-        });
+        return fetchWikiPageBest(title ? [title] : [name + ' ' + cap1(type), name])
+          .then(function (page) {
+            if (id !== reqId) return;
+            renderBio(page.extract, page.title);
+          });
       });
     }
     function cap1(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
@@ -1824,6 +1827,22 @@
       a.target = '_blank'; a.rel = 'noopener';
       a.textContent = 'Read the full article on Wikipedia →';
       bioWrap.appendChild(a);
+    }
+
+    // The English article Wikidata links to an entity — the authoritative
+    // answer to "which page is this place", instead of assembling a title and
+    // hoping. Natural Earth tags ~94% of subdivisions with a Wikidata id.
+    function fetchWikiTitleForQid(qid) {
+      if (!qid || !/^Q\d+$/.test(qid)) return Promise.resolve(null);
+      const url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + qid
+        + '&props=sitelinks&sitefilter=enwiki&format=json&origin=*';
+      return fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const e = j.entities && j.entities[qid];
+          const sl = e && e.sitelinks && e.sitelinks.enwiki;
+          return (sl && sl.title) || null;
+        }).catch(function () { return null; });
     }
 
     // Wikipedia intro + the page's linked Wikidata QID (via pageprops).
