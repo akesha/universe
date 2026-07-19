@@ -70,6 +70,14 @@
     font-size: 13px; letter-spacing: 0.02em; color: var(--ink-soft);
     display: flex; align-items: center; gap: 10px;
   }
+  /* the globe turns on its own, so there has to be a way to stop it */
+  .spinbtn {
+    align-self: flex-start; appearance: none; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 5px 11px; border-radius: 100px; transition: color .15s, border-color .15s;
+  }
+  .spinbtn:hover { color: var(--ink); border-color: var(--ink-soft); }
   .hint .dot {
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--ink); opacity: 0.55;
@@ -257,15 +265,36 @@
     transition: border-color .15s;
   }
   #toSystem:hover { border-color: var(--accent, #6cb6ff); }
+  /* ---- accessibility ---------------------------------------------------- */
+  /* Controls sit on a busy animated canvas, so focus needs to be unmistakable. */
+  a:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid #8fb8ff; outline-offset: 2px;
+  }
+  /* Someone who has asked for less motion still gets the scene — it just stops
+     drifting, bobbing and pulsing at them. The canvas animation is stopped in
+     script; this covers the CSS animations and transitions. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+  /* Text for screen readers only: the canvas scenes have no accessible content
+     of their own, so each page carries a written description of what is drawn. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap; border: 0;
+  }
 </style>
 </head>
 <body>
 <nav id="universe-nav" style="position:fixed;top:18px;right:20px;z-index:9999;display:flex;gap:6px;font-family:ui-monospace,SF Mono,Cascadia Mono,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;"><style>#universe-nav a{color:#98a0b3;text-decoration:none;padding:5px 11px;background:rgba(10,14,24,0.65);border:1px solid rgba(255,255,255,0.14);border-radius:100px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:color .15s}#universe-nav a:hover,#universe-nav a.active{color:#eef0f6}@media(max-width:640px){#universe-nav{left:10px;justify-content:center}#universe-nav a{padding:4px 8px;white-space:nowrap}}</style><a href="index.html">Milky Way</a><a href="local-group.html">Local Group</a><a href="solar-system.html">Solar System</a><a href="globe.html" class="active">Globe</a></nav>
-  <canvas id="space"></canvas>
+  <canvas id="space" aria-hidden="true"></canvas>
   <a id="toSystem" href="solar-system.html">&uarr; Back to Solar System</a>
   <div id="app">
     <div id="stage">
-      <canvas id="whirl"></canvas>
+      <canvas id="whirl" aria-hidden="true"></canvas>
       <canvas id="globe"></canvas>
       <button id="back" class="backbtn" hidden type="button">‹ Back to globe</button>
       <div id="loading" class="loading" hidden>Loading regions…</div>
@@ -273,10 +302,14 @@
     </div>
     <div id="panel">
       <div class="searchwrap">
-        <input id="search" type="search" placeholder="Search a city or country…" autocomplete="off" spellcheck="false">
+        <label for="search" class="sr-only">Search for a city or country</label>
+        <input id="search" type="search" placeholder="Search a city or country…" autocomplete="off" spellcheck="false"
+               role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list">
         <ul id="results" class="results" hidden></ul>
       </div>
       <div id="hint" class="hint"><span class="dot"></span>Drag to spin · click a country</div>
+      <button id="spin" class="spinbtn" type="button" aria-pressed="false">Pause rotation</button>
+      <p id="centreName" class="sr-only" aria-live="polite"></p>
       <button id="tour" class="tourbtn" type="button"><span class="ticon">▶</span><span id="tourlabel">Narrated tour</span></button>
       <a id="cosmiclink" class="cosmiclink" href="local-group.html?tour=1" target="_top">▲ or the full journey, from the Local Group</a>
       <div id="card" class="card">
@@ -890,6 +923,22 @@
       gctx.restore();
 
       if (mode === 'region' && cityList) drawCities();
+
+      // the aiming point for keyboard selection, shown only while it can be used
+      if (document.activeElement === globeCanvas) {
+        const x = CENTER[0], y = CENTER[1];
+        gctx.save();
+        gctx.strokeStyle = 'rgba(255,255,255,0.9)'; gctx.lineWidth = 1.2;
+        gctx.shadowColor = 'rgba(0,0,0,0.85)'; gctx.shadowBlur = 3;
+        gctx.beginPath(); gctx.arc(x, y, 7, 0, Math.PI * 2); gctx.stroke();
+        gctx.beginPath();
+        gctx.moveTo(x - 13, y); gctx.lineTo(x - 9, y);
+        gctx.moveTo(x + 9, y);  gctx.lineTo(x + 13, y);
+        gctx.moveTo(x, y - 13); gctx.lineTo(x, y - 9);
+        gctx.moveTo(x, y + 9);  gctx.lineTo(x, y + 13);
+        gctx.stroke();
+        gctx.restore();
+      }
     }
 
     // Draw the drilled state's cities as points on the front hemisphere, sized
@@ -995,14 +1044,18 @@
     }
 
     // ---- loop ----
-    let start = null, autoSpin = true, spinAccum = 0, lastTs = null;
+    // motionPaused is the viewer's explicit choice, and it outranks anything the
+    // scene would otherwise do on its own. It starts on for anyone whose system
+    // asks for reduced motion.
+    let motionPaused = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let start = null, autoSpin = !motionPaused, spinAccum = 0, lastTs = null;
     function frame(ts) {
       if (start === null) start = ts;
       if (lastTs === null) lastTs = ts;
       if (SW !== window.innerWidth || SH !== window.innerHeight) resizeSpace();
       const dt = (ts - lastTs) / 1000; lastTs = ts;
       const elapsed = (ts - start) / 1000;
-      if (autoSpin) spinAccum += dt * 16;
+      if (autoSpin && !motionPaused) spinAccum += dt * 16;
       clockT = elapsed; cloudDrift += dt * 0.7;
       projection.scale(viewScale);
       projection.rotate([rotation[0] + spinAccum, rotation[1], rotation[2]]);
@@ -1634,6 +1687,86 @@
       viewScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, viewScale * factor));
       projection.scale(viewScale);
     }, { passive: false });
+
+    // ---- keyboard operation ------------------------------------------------
+    // Everything above this point is pointer-only: you drag to spin, wheel to
+    // zoom, click to pick. The globe is the whole content of the page, so it
+    // takes focus and answers the same gestures from the keyboard — arrows
+    // spin, +/- zoom, Enter picks whatever sits at the centre of the view
+    // (the crosshair the rotation is already centred on), Escape steps back.
+    globeCanvas.setAttribute('tabindex', '0');
+    globeCanvas.setAttribute('role', 'application');
+    globeCanvas.setAttribute('aria-label',
+      'Interactive globe. Arrow keys rotate, plus and minus zoom, ' +
+      'Enter selects the place at the centre of the view, Escape goes back. ' +
+      'You can also search for a place by name in the field below.');
+
+    function settleRotation() {          // fold any drifting spin into the angle
+      autoSpin = false;
+      rotation = [rotation[0] + spinAccum, rotation[1], rotation[2]];
+      spinAccum = 0;
+    }
+
+    // Steering by keyboard means aiming at a crosshair you can't otherwise
+    // judge — and a screen-reader user can't see the globe at all — so the
+    // place under the centre is named out loud as the globe turns.
+    const centreEl = document.getElementById('centreName');
+    function nameAtCentre() {
+      const rot = projection.rotate();
+      const geo = [-rot[0], -rot[1]];
+      const hit = function (fc) {
+        if (!fc) return null;
+        const f = fc.features.find(function (x) { return d3.geoContains(x, geo); });
+        return f ? (f.properties.name || f.properties.name_en) : null;
+      };
+      return (mode !== 'world' && hit(regionsFC)) || hit(countriesFC) || 'open ocean';
+    }
+    let announceTimer = null;
+    function announceCentre() {
+      clearTimeout(announceTimer);
+      announceTimer = setTimeout(function () {
+        const n = nameAtCentre();
+        if (centreEl.textContent !== n) centreEl.textContent = n;
+      }, 250);                           // let a run of key presses settle first
+    }
+    function zoomBy(factor) {
+      viewScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, viewScale * factor));
+      projection.scale(viewScale);
+    }
+    globeCanvas.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const step = e.shiftKey ? 12 : 4;
+      switch (e.key) {
+        case 'ArrowLeft':  settleRotation(); rotation[0] -= step; break;
+        case 'ArrowRight': settleRotation(); rotation[0] += step; break;
+        case 'ArrowUp':    settleRotation(); rotation[1] = Math.min(90, rotation[1] + step); break;
+        case 'ArrowDown':  settleRotation(); rotation[1] = Math.max(-90, rotation[1] - step); break;
+        case '+': case '=': zoomBy(zoomStep()); break;
+        case '-': case '_': zoomBy(1 / zoomStep()); break;
+        case 'Enter': case ' ': {
+          const r = globeCanvas.getBoundingClientRect();
+          handleClick({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+          break;
+        }
+        case 'Escape': if (!backEl.hidden) backEl.click(); break;
+        default: return;                 // leave every other key to the browser
+      }
+      e.preventDefault();
+      announceCentre();
+    });
+    globeCanvas.addEventListener('focus', announceCentre);
+
+    // Rotation runs on its own, so it needs a stop — required whenever motion
+    // starts automatically and runs for more than a few seconds.
+    const spinEl = document.getElementById('spin');
+    function setMotionPaused(paused) {
+      motionPaused = paused;
+      if (!paused) autoSpin = true;
+      spinEl.textContent = paused ? 'Resume rotation' : 'Pause rotation';
+      spinEl.setAttribute('aria-pressed', String(paused));
+    }
+    spinEl.addEventListener('click', function () { setMotionPaused(!motionPaused); });
+    setMotionPaused(motionPaused);       // reflect the reduced-motion default
 
     let lastPinchDist = null;
     stage.addEventListener('touchstart', function (e) {
