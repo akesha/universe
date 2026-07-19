@@ -70,6 +70,29 @@
     font-size: 13px; letter-spacing: 0.02em; color: var(--ink-soft);
     display: flex; align-items: center; gap: 10px;
   }
+  /* The globe is the whole experience and it is drawn in pixels. This lists
+     whatever it currently shows — the states in a country, then the towns in a
+     state — as ordinary buttons, so the drill-down can be done by tab and read
+     aloud, and so anyone can pick a place by name instead of by aim. */
+  .places { margin-top: 2px; }
+  .placeshead {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; font-weight: 400;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 9px;
+  }
+  .places ul {
+    list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px;
+    max-height: 168px; overflow-y: auto;
+  }
+  .places button {
+    appearance: none; cursor: pointer; border: 1px solid var(--line);
+    background: transparent; color: var(--ink-soft);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em;
+    padding: 7px 11px; border-radius: 100px; min-height: 32px;
+    transition: color .15s, border-color .15s;
+  }
+  .places button:hover { color: var(--ink); border-color: var(--ink-soft); }
+  .places button[aria-current="true"] { color: var(--ink); border-color: #6cb6ff; }
+
   /* the globe turns on its own, so there has to be a way to stop it */
   .spinbtn {
     align-self: flex-start; appearance: none; cursor: pointer;
@@ -196,7 +219,7 @@
   .tourbtn.running { border-color: #6cb6ff; background: rgba(30,52,96,0.55); }
   .tourbtn .ticon { font-size: 10px; color: #8fb8ff; }
   .cosmiclink {
-    display: block; margin: 8px 0 0 2px;
+    display: block; margin: 4px 0 0 2px; padding: 7px 0; min-height: 24px;
     font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em;
     color: var(--ink-soft); text-decoration: none; transition: color .15s;
   }
@@ -206,7 +229,7 @@
     appearance: none; -webkit-appearance: none; cursor: pointer;
     border: 1px solid var(--line); background: rgba(8,12,22,.6); color: var(--ink);
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
-    padding: 7px 11px; border-radius: 2px; display: flex; align-items: center; gap: 6px;
+    padding: 9px 13px; min-height: 32px; border-radius: 2px; display: flex; align-items: center; gap: 6px;
     backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
   }
   .backbtn:hover { border-color: var(--ink); }
@@ -233,7 +256,8 @@
     margin: 0; text-wrap: pretty; color: #cfd4df;
   }
   .more {
-    display: inline-block; margin-top: 10px; text-decoration: none;
+    display: inline-block; margin-top: 8px; text-decoration: none;
+    padding: 6px 0; min-height: 24px;
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
     text-transform: uppercase; color: var(--ink-soft);
     border-bottom: 1px solid rgba(255,255,255,0.18); padding-bottom: 2px;
@@ -310,6 +334,10 @@
       <div id="hint" class="hint"><span class="dot"></span>Drag to spin · click a country</div>
       <button id="spin" class="spinbtn" type="button" aria-pressed="false">Pause rotation</button>
       <p id="centreName" class="sr-only" aria-live="polite"></p>
+      <nav id="places" class="places" hidden aria-labelledby="placesHead">
+        <h2 id="placesHead" class="placeshead"></h2>
+        <ul id="placeList"></ul>
+      </nav>
       <button id="tour" class="tourbtn" type="button"><span class="ticon">▶</span><span id="tourlabel">Narrated tour</span></button>
       <a id="cosmiclink" class="cosmiclink" href="local-group.html?tour=1" target="_top">▲ or the full journey, from the Local Group</a>
       <div id="card" class="card">
@@ -1144,7 +1172,7 @@
       // City level: cities sit on the drilled state, so test them by pixel proximity.
       if (mode === 'region') {
         const city = cityHit(px, py);
-        if (city) { selectedCity = city; flyTo(city.lon, city.lat, cityScale(city.lat)); showCity(city); }
+        if (city) { selectedCity = city; flyTo(city.lon, city.lat, cityScale(city.lat)); showCity(city); renderPlaces(); }
         return;
       }
 
@@ -1152,7 +1180,7 @@
       if (mode === 'country' && regionsFC) {
         let hit = null;
         for (const f of regionsFC.features) { if (d3.geoContains(f, geo)) { hit = f; break; } }
-        if (hit) { selectedRegion = hit; selectedCity = null; showRegion(hit, drillCountry); }
+        if (hit) { selectedRegion = hit; selectedCity = null; showRegion(hit, drillCountry); renderPlaces(); }
         return;
       }
 
@@ -1225,6 +1253,7 @@
         backEl.hidden = false; backEl.textContent = '‹ Back to states'; zoomEl.hidden = true;
         cardEl.classList.remove('show');
         hintEl.style.display = ''; hintEl.innerHTML = '<span class="dot"></span>Click a city or town in ' + esc(pname);
+        renderPlaces();
         const c = d3.geoCentroid(province);
         flyTo(c[0], c[1], fitScale(province));
       }).catch(function () { loadingEl.hidden = true; flashMsg('Could not load city data. Try again.'); });
@@ -1246,6 +1275,7 @@
         backEl.hidden = false; backEl.textContent = '‹ Back to globe'; zoomEl.hidden = true;
         cardEl.classList.remove('show');
         hintEl.style.display = ''; hintEl.innerHTML = '<span class="dot"></span>Click a state or province in ' + esc(cname);
+        renderPlaces();
         const c = d3.geoCentroid(country);
         flyTo(c[0], c[1], fitScale(country));
       }).catch(function () { flashMsg('Could not load region data. Try again.'); });
@@ -1264,6 +1294,7 @@
       } else {
         flyTo(-rotation[0], -rotation[1], R);
       }
+      renderPlaces();
     }
 
     // Step back from the city view up to the state / province view of the country.
@@ -1272,6 +1303,7 @@
       const province = drillRegion; drillRegion = null;
       selectedRegion = province || null;
       backEl.hidden = false; backEl.textContent = '‹ Back to globe';
+      renderPlaces();
       if (province) showRegion(province, drillCountry);
       if (drillCountry) {
         const c = d3.geoCentroid(drillCountry);
@@ -1310,6 +1342,57 @@
       if (mode === 'country' && selectedRegion) enterRegion(selectedRegion); // state → cities
       else if (selected) enterCountry(selected);                             // country → states
     });
+
+    // ---- the same places, as a list you can tab through --------------------
+    // Mirrors whatever the map is showing. Picking from here does exactly what
+    // clicking the map does, so the drill-down works without seeing the globe.
+    const placesEl = document.getElementById('places');
+    const placesHeadEl = document.getElementById('placesHead');
+    const placeListEl = document.getElementById('placeList');
+    function featureName(f) {
+      return f.properties.name || f.properties.name_en || f.properties.iso_3166_2 || 'Unnamed';
+    }
+    function renderPlaces() {
+      let head = '', items = [];
+      if (mode === 'region' && cityList && cityList.length) {
+        const rn = drillRegion ? featureName(drillRegion) : 'this region';
+        head = 'Towns in ' + rn;
+        items = cityList.slice()
+          .sort(function (a, b) { return b.pop - a.pop; })
+          .slice(0, 60)                       // biggest first; the tail is noise in a list
+          .map(function (c) {
+            return { label: c.name, current: c === selectedCity, go: function () {
+              selectedCity = c;
+              flyTo(c.lon, c.lat, cityScale(c.lat));
+              showCity(c); renderPlaces();
+            } };
+          });
+      } else if (mode === 'country' && regionsFC) {
+        head = 'States and provinces' + (drillCountry ? ' of ' + drillCountry.properties.name : '');
+        items = regionsFC.features.slice()
+          .sort(function (a, b) { return featureName(a).localeCompare(featureName(b)); })
+          .map(function (f) {
+            return { label: featureName(f), current: f === selectedRegion, go: function () {
+              selectedRegion = f; selectedCity = null;
+              const c = d3.geoCentroid(f);
+              flyTo(c[0], c[1], fitScale(f));
+              showRegion(f, drillCountry); renderPlaces();
+            } };
+          });
+      }
+      if (!items.length) { placesEl.hidden = true; placeListEl.innerHTML = ''; return; }
+      placesHeadEl.textContent = head;
+      placeListEl.innerHTML = '';
+      items.forEach(function (it) {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = it.label;
+        if (it.current) b.setAttribute('aria-current', 'true');
+        b.addEventListener('click', function () { if (tourRunning) stopTour(); stopNarration(); it.go(); });
+        li.appendChild(b); placeListEl.appendChild(li);
+      });
+      placesEl.hidden = false;
+    }
 
     // ── narration engine ────────────────────────────────────────────────
     // speak(text) resolves when the audio finishes (or is stopped). Uses the

@@ -78,7 +78,8 @@
   .chk input { accent-color: var(--accent); cursor: pointer; }
 
   @media (max-width: 640px) {
-    .caption { top: 48px; }
+    .caption { top: 92px; }
+    #toGalaxy { top: 44px; right: 12px; }
     .caption h1 { font-size: 23px; }
     #controls { gap: 12px; padding: 9px 12px; flex-wrap: wrap; max-width: 92vw; justify-content: center; }
   }
@@ -330,11 +331,56 @@
       }
     }
 
-    function drawLabel(p, pos) {
-      ctx.font = (p.earth ? 'italic 13px "Spectral", serif' : '11px ' + getComputedStyle(document.body).getPropertyValue('--mono'));
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillStyle = p.earth ? 'rgba(150,200,255,0.95)' : 'rgba(180,186,200,0.7)';
-      ctx.fillText(p.name, pos.x, pos.y + p.size + (p.ring ? 7 : 4));
+    // The inner planets bunch together near the Sun — and on a narrow screen the
+    // whole system does — so labels can't just sit under their dot or they pile
+    // into each other. Each name takes the first free spot around its planet,
+    // and is dropped rather than drawn as mush if there isn't one. Earth is
+    // placed first and never dropped: it's the one you can travel into.
+    function labelFont(p) {
+      return p.earth ? 'italic 13px "Spectral", serif'
+                     : '11px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    }
+    function drawLabels(positions) {
+      const H = 13, PAD = 2;
+      const hits = function (b) {
+        return taken.some(function (t) {
+          return b.x < t.x + t.w && b.x + b.w > t.x && b.y < t.y + t.h && b.y + b.h > t.y;
+        });
+      };
+      // the planets themselves are obstacles: a name should never sit on one
+      const taken = PLANETS.map(function (p, i) {
+        const q = positions[i];
+        return { x: q.x - p.size, y: q.y - p.size, w: p.size * 2, h: p.size * 2 };
+      });
+      const order = PLANETS.map(function (p, i) { return { p: p, pos: positions[i] }; })
+        .sort(function (a, b) { return (b.p.earth - a.p.earth) || (b.p.size - a.p.size); });
+
+      for (const item of order) {
+        const p = item.p, pos = item.pos;
+        ctx.font = labelFont(p);
+        const w = ctx.measureText(p.name).width;
+        const gap = p.size + (p.ring ? 7 : 4);
+        const spots = [
+          { x: pos.x, y: pos.y + gap },                              // below
+          { x: pos.x, y: pos.y - gap - H },                          // above
+          { x: pos.x + p.size + 8 + w / 2, y: pos.y - H / 2 },       // right
+          { x: pos.x - p.size - 8 - w / 2, y: pos.y - H / 2 }        // left
+        ];
+        let put = null;
+        for (const s of spots) {
+          const box = { x: s.x - w / 2 - PAD, y: s.y - PAD, w: w + PAD * 2, h: H + PAD * 2 };
+          if (!hits(box)) { put = { s: s, box: box }; break; }
+        }
+        if (!put) {
+          if (!p.earth) continue;                                    // no room: skip the name
+          const s = spots[0];
+          put = { s: s, box: { x: s.x - w / 2 - PAD, y: s.y - PAD, w: w + PAD * 2, h: H + PAD * 2 } };
+        }
+        taken.push(put.box);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillStyle = p.earth ? 'rgba(150,200,255,0.95)' : 'rgba(180,186,200,0.7)';
+        ctx.fillText(p.name, put.s.x, put.s.y);
+      }
     }
 
     // ---- loop ----
@@ -384,7 +430,7 @@
       drawSun(t);
       PLANETS.forEach(function (p, i) { if (!positions[i].far) drawPlanet(p, positions[i], t); });
       if (transformed) ctx.restore();
-      if (showLabels && state === 'system' && zoomT < 0.04) PLANETS.forEach(function (p, i) { drawLabel(p, positions[i]); });
+      if (showLabels && state === 'system' && zoomT < 0.04) drawLabels(positions);
 
       // crossfade the interactive globe in over the back half of the zoom
       const ov = smooth((zoomT - 0.5) / 0.5);
@@ -395,7 +441,12 @@
       if (state === 'system') {
         const ep = planetPos(earthRef);
         tag.style.display = 'block';
-        tag.style.left = (ep.x + earthRef.size + 12) + 'px';
+        // sit beside Earth, but flip to its other side rather than run off the
+        // edge of a narrow screen
+        const tw = tag.offsetWidth || 180;
+        let tx = ep.x + earthRef.size + 12;
+        if (tx + tw > window.innerWidth - 8) tx = Math.max(8, ep.x - earthRef.size - 12 - tw);
+        tag.style.left = tx + 'px';
         tag.style.top = (ep.y - 6) + 'px';
       } else { tag.style.display = 'none'; }
 
