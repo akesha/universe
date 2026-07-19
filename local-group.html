@@ -96,24 +96,37 @@
 
   @media (max-width: 640px) {
     .caption h1 { font-size: 23px; }
-    #controls { gap: 12px; padding: 9px 12px; flex-wrap: wrap; max-width: 92vw; justify-content: center; }
+    #controls { gap: 10px 12px; padding: 9px 12px; flex-wrap: wrap; max-width: 92vw; justify-content: center; }
+    /* the dividers only read as dividers in a single row */
+    #controls .sep { display: none; }
   }
 
-  /* narrated cosmic tour — stays above the zoom overlays so it's always clickable */
+  /* narrated cosmic tour — rides in the control bar alongside the settings */
   .tourbtn {
-    position: fixed; top: 178px; left: 34px; z-index: 10000;
     appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 9px;
-    border: 1px solid var(--line); background: rgba(10,14,24,0.6); color: var(--ink);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--line); background: transparent; color: var(--ink);
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-    padding: 10px 16px; border-radius: 100px; transition: border-color .15s, background .15s;
+    padding: 6px 14px; border-radius: 100px; transition: border-color .15s, background .15s;
+    white-space: nowrap; flex-shrink: 0;
   }
   .tourbtn:hover { border-color: var(--accent); }
   .tourbtn.running { border-color: var(--accent); background: rgba(30,44,80,0.7); }
   .tourbtn .ticon { font-size: 10px; color: var(--accent); }
   @keyframes tourpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(143,184,255,0); } 50% { box-shadow: 0 0 0 7px rgba(143,184,255,0.10); } }
   .tourbtn.invite { animation: tourpulse 2s ease-in-out infinite; }
-  @media (max-width: 640px) { .tourbtn { top: auto; bottom: 84px; left: 50%; transform: translateX(-50%); } }
+
+  /* Zoomed into the galaxy, the overlay covers this bar, and its settings no
+     longer describe what's on screen. The tour button still has to be
+     reachable though — it both stops a running tour and starts one from
+     whatever depth you've already reached — so the bar lifts above the
+     overlay and drops everything except that button. Once lifted it also
+     shifts out of the centre, since the page we've zoomed into has its own
+     control bar sitting exactly there. */
+  #controls.touring, #controls.zoomed {
+    z-index: 10000; left: 24px; transform: none; background: rgba(10,14,24,0.72);
+  }
+  #controls.touring > *:not(.tourbtn),
+  #controls.zoomed > *:not(.tourbtn) { display: none; }
 </style>
 </head>
 <body>
@@ -127,9 +140,10 @@
   </div>
 
   <div id="mwTag" class="mwtag">Click the Milky Way to zoom in &rarr;</div>
-  <button id="tour" class="tourbtn" type="button"><span class="ticon">&#9654;</span><span id="tourlabel">Narrated tour</span></button>
 
   <div id="controls">
+    <button id="tour" class="tourbtn" type="button"><span class="ticon">&#9654;</span><span id="tourlabel">Narrated tour</span></button>
+    <div class="sep"></div>
     <button id="playpause" type="button">Pause</button>
     <div class="sep"></div>
     <div class="grp">Speed <input id="speed" type="range" min="0.2" max="8" step="0.1" value="1"><span id="spd">1.0&times;</span></div>
@@ -291,6 +305,7 @@
     const gv = document.getElementById('galaxyView');
     const gf = document.getElementById('galaxyFrame');
     const tag = document.getElementById('mwTag');
+    const controlsEl = document.getElementById('controls');   // read by frame(), so declared here
     galaxies.forEach(function (g) { g.spinAngle = Math.random() * Math.PI * 2; });
     function easeIO(k) { return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; }
     function smooth(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
@@ -386,6 +401,8 @@
       gv.style.display = zoomT > 0 ? 'block' : 'none';
       gv.style.opacity = ov;
       gv.classList.toggle('active', state === 'galaxy');
+      // hand the bar over to the tour button before the overlay hides it
+      controlsEl.classList.toggle('zoomed', zoomT > 0.35);
 
       if (state === 'group') {
         tag.style.display = 'block';
@@ -525,6 +542,7 @@
     }
     function setTourUI(on) {
       tourRunning = on;
+      controlsEl.classList.toggle('touring', on);
       tourEl.classList.toggle('running', on);
       tourEl.classList.remove('invite');
       tourLabelEl.textContent = on ? 'Stop tour' : 'Narrated tour';
