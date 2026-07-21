@@ -1196,14 +1196,30 @@
     }
 
     // ---- drill into a country's states / provinces ----
-    function ensureAdmin1() {
+    // Every dataset here is fetched from a third-party host. Without a ceiling a
+    // stalled request hangs forever behind a spinner; withTimeout turns that into
+    // an ordinary rejection so the callers' error paths actually fire.
+    function withTimeout(url, opts, ms) {
+      const ctl = new AbortController();
+      const timer = setTimeout(function () { ctl.abort(); }, ms || 12000);
+      return fetch(url, Object.assign({ signal: ctl.signal }, opts || {}))
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r;
+        })
+        .finally(function () { clearTimeout(timer); });
+    }
+
+    // quiet=true fetches in the background (used when warming search) so it
+    // doesn't throw the full-screen "Loading regions…" overlay over the globe.
+    function ensureAdmin1(quiet) {
       if (admin1FC) return Promise.resolve(admin1FC);
       if (admin1Loading) return admin1Loading;
-      loadingEl.hidden = false; loadingEl.textContent = 'Loading regions…';
-      admin1Loading = fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson')
+      if (!quiet) { loadingEl.hidden = false; loadingEl.textContent = 'Loading regions…'; }
+      admin1Loading = withTimeout('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson', null, 20000)
         .then(function (r) { return r.json(); })
-        .then(function (j) { admin1FC = j; loadingEl.hidden = true; return j; })
-        .catch(function (e) { loadingEl.hidden = true; admin1Loading = null; throw e; });
+        .then(function (j) { admin1FC = j; if (!quiet) loadingEl.hidden = true; return j; })
+        .catch(function (e) { if (!quiet) loadingEl.hidden = true; admin1Loading = null; throw e; });
       return admin1Loading;
     }
 
@@ -1212,7 +1228,7 @@
     function ensurePlaces() {
       if (placesArr) return Promise.resolve(placesArr);
       if (placesLoading) return placesLoading;
-      placesLoading = fetch('https://raw.githubusercontent.com/river-jade/cities15000/master/cities15000.txt')
+      placesLoading = withTimeout('https://raw.githubusercontent.com/river-jade/cities15000/master/cities15000.txt', null, 20000)
         .then(function (r) { return r.text(); })
         .then(function (txt) {
           const out = [];
@@ -1293,6 +1309,7 @@
         showCountry(country);
       } else {
         flyTo(-rotation[0], -rotation[1], R);
+        setPlaceParam(null);             // back at the whole globe: nothing to link to
       }
       renderPlaces();
     }
@@ -1349,8 +1366,11 @@
     const placesEl = document.getElementById('places');
     const placesHeadEl = document.getElementById('placesHead');
     const placeListEl = document.getElementById('placeList');
+    // English name for display; Natural Earth keeps the native one in `name`
+    // ("Bayern") and the English one in `name_en` ("Bavaria").
     function featureName(f) {
-      return f.properties.name || f.properties.name_en || f.properties.iso_3166_2 || 'Unnamed';
+      const p = f.properties;
+      return p.name_en || p.name || p.iso_3166_2 || 'Unnamed';
     }
     function renderPlaces() {
       let head = '', items = [];
@@ -1421,10 +1441,10 @@
       const token = ++narrationToken;
       setSpeakUI(true);
       if (VOICE_PROXY_URL) {
-        return fetch(VOICE_PROXY_URL, {
+        return withTimeout(VOICE_PROXY_URL, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: text.slice(0, 2400), voiceId: NARRATION_VOICE_ID })
-        }).then(function (r) { if (!r.ok) throw new Error('tts ' + r.status); return r.blob(); })
+        }, 15000).then(function (r) { return r.blob(); })
           .then(function (blob) {
             if (token !== narrationToken) return;           // superseded/stopped
             return new Promise(function (resolve) {
@@ -1644,14 +1664,26 @@
       return -1;
     }
 
-    function runSearch(q) {
-      const nq = norm(q).trim();
-      if (nq.length < 2) { closeResults(); return; }
+    // Weights that break ties when kinds match a query equally well. Countries
+    // win outright. A region is treated as a city of ~one million, so a major
+    // namesake city (New York, Tokyo) beats its state while a small-town name
+    // (Bahia, Georgia's towns) lets the region win.
+    const RANK_COUNTRY = Infinity, RANK_REGION = 1e6;
+    function rankedHits(nq) {
       const hits = [];
       if (countriesFC) {
         for (const f of countriesFC.features) {
           const r = matchRank(f.properties.name, nq);
-          if (r >= 0) hits.push({ kind: 'country', name: f.properties.name, rank: r, pop: Infinity, feature: f });
+          if (r >= 0) hits.push({ kind: 'country', name: f.properties.name, rank: r, pop: RANK_COUNTRY, feature: f });
+        }
+      }
+      if (admin1FC) {
+        for (const f of admin1FC.features) {
+          const p = f.properties;
+          // match either the native or the English name (Bayern / Bavaria)
+          let r = -1;
+          [p.name_en, p.name].forEach(function (n) { if (n) { const rr = matchRank(n, nq); if (rr >= 0 && (r < 0 || rr < r)) r = rr; } });
+          if (r >= 0) hits.push({ kind: 'region', name: featureName(f), rank: r, pop: RANK_REGION, feature: f });
         }
       }
       if (placesArr) {
@@ -1661,8 +1693,20 @@
         }
       }
       hits.sort(function (a, b) { return a.rank - b.rank || b.pop - a.pop; });
-      searchHits = hits.slice(0, 9);
-      renderResults(!placesArr);
+      return hits;
+    }
+    function runSearch(q) {
+      const nq = norm(q).trim();
+      if (nq.length < 2) { closeResults(); return; }
+      searchHits = rankedHits(nq).slice(0, 9);
+      // still "loading" from the searcher's view until both big sets are in
+      renderResults(!placesArr || !admin1FC);
+    }
+    function dispatchHit(h) {
+      if (!h) return;
+      if (h.kind === 'country') gotoCountry(h.feature);
+      else if (h.kind === 'region') gotoRegion(h.feature);
+      else gotoCity(h.city);
     }
 
     function renderResults(placesLoading) {
@@ -1670,14 +1714,18 @@
       if (!searchHits.length) {
         const li = document.createElement('li'); li.className = 'none';
         li.textContent = placesLoading ? 'Loading places…' : 'No matches';
-        resultsEl.appendChild(li); resultsEl.hidden = false; activeIdx = -1; return;
+        resultsEl.appendChild(li); resultsEl.hidden = false; activeIdx = -1; searchEl.setAttribute('aria-expanded', 'true'); return;
       }
+      searchEl.setAttribute('aria-expanded', 'true');
       searchHits.forEach(function (h, i) {
         const li = document.createElement('li');
         const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = h.name;
         const ctx = document.createElement('span'); ctx.className = 'ctx';
         if (h.kind === 'country') {
           ctx.textContent = 'Country';
+        } else if (h.kind === 'region') {
+          const cn = h.feature.properties.admin || h.feature.properties.geonunit || '';
+          ctx.textContent = ['State / province', cn].filter(Boolean).join(' · ');
         } else {
           const where = [regionNameFor(h.city), countryNameFor(h.city.cc)].filter(Boolean).join(', ');
           ctx.textContent = where + (h.pop ? ' · ' + Math.round(h.pop / 1000) + 'k' : '');
@@ -1693,12 +1741,37 @@
       items.forEach(function (li, i) { li.classList.toggle('active', i === activeIdx); });
       if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
     }
-    function closeResults() { resultsEl.hidden = true; activeIdx = -1; }
+    function closeResults() { resultsEl.hidden = true; activeIdx = -1; searchEl.setAttribute('aria-expanded', 'false'); }
 
     function choose(i) {
       const h = searchHits[i]; if (!h) return;
       closeResults(); searchEl.blur();
-      if (h.kind === 'country') gotoCountry(h.feature); else gotoCity(h.city);
+      dispatchHit(h);
+    }
+
+    // Jump straight to a state / province: find the country it sits in, drill in,
+    // then select the region. enterCountry rebuilds regionsFC from the same
+    // admin1 set, so the matching feature is already there to pick.
+    function gotoRegion(feature) {
+      if (tourRunning) stopTour();
+      stopNarration();
+      const rc = d3.geoCentroid(feature);
+      const country = countriesFC && countriesFC.features.find(function (f) { return d3.geoContains(f, rc); });
+      if (!country) { flashMsg('Could not locate ' + featureName(feature)); return; }
+      selected = country;
+      loadingEl.hidden = false; loadingEl.textContent = 'Finding ' + featureName(feature) + '…';
+      enterCountry(country).then(function () {
+        loadingEl.hidden = true;
+        if (mode !== 'country' || !regionsFC) return;
+        const region = regionsFC.features.indexOf(feature) !== -1 ? feature
+          : regionsFC.features.find(function (f) { return featureName(f) === featureName(feature); });
+        if (!region) return;             // country has no matching subdivision: leave at state view
+        selectedRegion = region; selectedCity = null;
+        const c = d3.geoCentroid(region);
+        flyTo(c[0], c[1], fitScale(region));
+        showRegion(region, drillCountry);
+        renderPlaces();
+      }).catch(function () { loadingEl.hidden = true; });
     }
 
     function gotoCountry(f) {
@@ -1737,11 +1810,17 @@
       }).catch(function () { loadingEl.hidden = true; });
     }
 
-    searchEl.addEventListener('focus', function () {
-      ensurePlaces().then(function () {
+    // Warm both big sets when the field is focused; each re-runs the search as it
+    // lands, so cities and states fill in without the searcher waiting on a click.
+    // (admin1 is ~40 MB — the same file drilling needs, just fetched a bit sooner.)
+    function warmSearchData() {
+      const rerun = function () {
         if (document.activeElement === searchEl && searchEl.value.trim().length >= 2) runSearch(searchEl.value);
-      }).catch(function () {});
-    });
+      };
+      ensurePlaces().then(rerun).catch(function () {});
+      ensureAdmin1(true).then(rerun).catch(function () {});
+    }
+    searchEl.addEventListener('focus', warmSearchData);
     searchEl.addEventListener('input', function () {
       clearTimeout(searchTimer);
       const q = searchEl.value;
@@ -1755,6 +1834,31 @@
       else if (e.key === 'Escape') { closeResults(); searchEl.blur(); }
     });
     searchEl.addEventListener('blur', function () { setTimeout(closeResults, 120); });
+
+    // ---- shareable URLs ----------------------------------------------------
+    // Reflect the current place in ?place= so the view can be linked, and open
+    // straight to a place when the page is loaded with that parameter.
+    function setPlaceParam(name) {
+      const url = new URL(location.href);
+      if (name) url.searchParams.set('place', name); else url.searchParams.delete('place');
+      history.replaceState(null, '', url);
+    }
+    // Resolve ?place= against countries, then states, then cities — in that
+    // order, and only fetching the heavy sets if a country doesn't already match.
+    function applyDeepLink() {
+      const q = new URLSearchParams(location.search).get('place');
+      if (!q || !countriesFC) return;
+      const nq = norm(q).trim();
+      // An exact country match needs no extra data — take it and skip the fetch.
+      const exactCountry = countriesFC.features.find(function (f) { return matchRank(f.properties.name, nq) === 0; });
+      if (exactCountry) { gotoCountry(exactCountry); return; }
+      // Otherwise pull the sets a state or city needs, then pick exactly what the
+      // search box would have picked for the same text.
+      Promise.all([ensurePlaces().catch(function () { return null; }),
+                   ensureAdmin1(true).catch(function () { return null; })]).then(function () {
+        dispatchHit(rankedHits(nq)[0]);
+      });
+    }
 
     // ---- scroll / pinch to zoom ----
     // The ceiling is set by the tile pyramid rather than the vector data: z19 at
@@ -1877,6 +1981,7 @@
     function showCountry(f) {
       const id = ++reqId;
       const name = f.properties.name;
+      setPlaceParam(name);
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
       stopNarration(); speakEl.hidden = false;
@@ -1919,8 +2024,9 @@
     function showRegion(feature, country) {
       const id = ++reqId;
       const p = feature.properties;
-      const name = p.name || p.name_en || p.iso_3166_2 || 'Region';
+      const name = p.name_en || p.name || p.iso_3166_2 || 'Region';
       const type = p.type_en || p.type || 'region';
+      setPlaceParam(name);
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
       stopNarration(); speakEl.hidden = false;
@@ -1973,6 +2079,7 @@
     function showCity(c) {
       const id = ++reqId;
       const name = c.name || 'City';
+      setPlaceParam(name);
       const isCap = isCapital(c);
       const provName = drillRegion && (drillRegion.properties.name || drillRegion.properties.name_en);
       const cntryName = drillCountry && drillCountry.properties.name;
@@ -2054,7 +2161,7 @@
       if (!qid || !/^Q\d+$/.test(qid)) return Promise.resolve(null);
       const url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + qid
         + '&props=sitelinks&sitefilter=enwiki&format=json&origin=*';
-      return fetch(url)
+      return withTimeout(url, null, 10000)
         .then(function (r) { return r.json(); })
         .then(function (j) {
           const e = j.entities && j.entities[qid];
@@ -2067,7 +2174,7 @@
     function fetchWikiPage(title) {
       const params = 'action=query&titles=' + encodeURIComponent(title)
         + '&prop=extracts|pageprops&ppprop=wikibase_item&exintro=1&exchars=600&explaintext=1&redirects=1&format=json&origin=*';
-      return fetch('https://en.wikipedia.org/w/api.php?' + params)
+      return withTimeout('https://en.wikipedia.org/w/api.php?' + params, null, 10000)
         .then(function (r) { return r.json(); })
         .then(function (j) {
           const pages = j.query && j.query.pages;
@@ -2099,7 +2206,7 @@
         + ' OPTIONAL { ?r wdt:P41 ?flag. }'
         + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". } } LIMIT 1';
       const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q);
-      return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+      return withTimeout(url, { headers: { 'Accept': 'application/sparql-results+json' } }, 10000)
         .then(function (r) { return r.json(); })
         .then(function (j) {
           const b = (j.results.bindings || [])[0] || {};
@@ -2116,7 +2223,7 @@
     function fetchWikiSummary(title) {
       const params = 'action=query&titles=' + encodeURIComponent(title)
         + '&prop=extracts&exintro=1&exchars=700&explaintext=1&redirects=1&format=json&origin=*';
-      return fetch('https://en.wikipedia.org/w/api.php?' + params)
+      return withTimeout('https://en.wikipedia.org/w/api.php?' + params, null, 10000)
         .then(function (r) { return r.json(); })
         .then(function (j) {
           const pages = j.query && j.query.pages;
@@ -2140,7 +2247,7 @@
         + ' OPTIONAL { ?r wdt:P1313 ?office. } OPTIONAL { ?r wdt:P41 ?flag. }'
         + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul,es,fr,de,pt". } } LIMIT 1';
       const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q);
-      return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+      return withTimeout(url, { headers: { 'Accept': 'application/sparql-results+json' } }, 10000)
         .then(function (r) { return r.json(); })
         .then(function (j) {
           const b = (j.results.bindings || [])[0] || {};
@@ -2168,7 +2275,7 @@
         + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul,es,fr,de,pt". }'
         + ' } LIMIT 1';
       const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q);
-      return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+      return withTimeout(url, { headers: { 'Accept': 'application/sparql-results+json' } }, 10000)
         .then(function (r) { return r.json(); })
         .then(function (j) {
           const b = (j.results.bindings || [])[0] || {};
@@ -2196,7 +2303,7 @@
       if (!ids.length) return facts;
       const url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&props=labels'
         + '&languages=en&format=json&origin=*&ids=' + ids.join('|');
-      return fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+      return withTimeout(url, null, 10000).then(function (r) { return r.json(); }).then(function (j) {
         const lbl = function (qid) {
           const e = j.entities && j.entities[qid];
           return (e && e.labels && e.labels.en && e.labels.en.value) || null;
@@ -2223,14 +2330,21 @@
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
     // ---- data ----
-    fetch('https://unpkg.com/world-atlas@2.0.2/countries-110m.json')
+    // The base map is load-bearing: without it there's nothing to click and no
+    // search. If it fails, say so instead of leaving an empty spinning starfield.
+    withTimeout('https://unpkg.com/world-atlas@2.0.2/countries-110m.json', null, 15000)
       .then(function (r) { return r.json(); })
       .then(function (world) {
         countriesFC = topojson.feature(world, world.objects.countries);
         countriesFC.features.forEach(function (f) { f._color = colorFor(f.properties.name); });
         drawGlobe();
+        applyDeepLink();
       })
-      .catch(function (e) { console.error('map load failed', e); });
+      .catch(function (e) {
+        console.error('map load failed', e);
+        loadingEl.hidden = false;
+        loadingEl.textContent = 'Could not load map data — check your connection and reload.';
+      });
 
     // ---- API for the full cosmic tour (same-origin parent frames drive this) ----
     window.__universe = {
