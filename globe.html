@@ -290,6 +290,16 @@
   }
   #toSystem:hover { border-color: var(--accent, #6cb6ff); }
   /* ---- accessibility ---------------------------------------------------- */
+  /* Standard skip link: out of the way until tabbed to, then unmissable. */
+  .skip {
+    position: fixed; top: -60px; left: 12px; z-index: 100000;
+    background: #0a0e18; color: #eef0f6; border: 1px solid #8fb8ff;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em;
+    padding: 10px 14px; border-radius: 6px; text-decoration: none;
+    transition: top .15s;
+  }
+  .skip:focus { top: 12px; }
+  #main:focus { outline: none; }
   /* Controls sit on a busy animated canvas, so focus needs to be unmistakable. */
   a:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
     outline: 2px solid #8fb8ff; outline-offset: 2px;
@@ -313,7 +323,9 @@
 </style>
 </head>
 <body>
+  <a class="skip" href="#main">Skip to the main content</a>
 <nav id="universe-nav" style="position:fixed;top:18px;right:20px;z-index:9999;display:flex;gap:6px;font-family:ui-monospace,SF Mono,Cascadia Mono,Menlo,monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;"><style>#universe-nav a{color:#98a0b3;text-decoration:none;padding:5px 11px;background:rgba(10,14,24,0.65);border:1px solid rgba(255,255,255,0.14);border-radius:100px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:color .15s}#universe-nav a:hover,#universe-nav a.active{color:#eef0f6}@media(max-width:640px){#universe-nav{left:10px;justify-content:center}#universe-nav a{padding:4px 8px;white-space:nowrap}}</style><a href="index.html">Milky Way</a><a href="local-group.html">Local Group</a><a href="solar-system.html">Solar System</a><a href="globe.html" class="active">Globe</a></nav>
+  <main id="main" tabindex="-1">
   <canvas id="space" aria-hidden="true"></canvas>
   <a id="toSystem" href="solar-system.html">&uarr; Back to Solar System</a>
   <div id="app">
@@ -359,6 +371,8 @@
       </div>
     </div>
   </div>
+
+  </main>
 
   <script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
   <script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
