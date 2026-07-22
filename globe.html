@@ -1684,6 +1684,14 @@
         text: 'The brothers auditioned for Motown in this house on West Grand Boulevard on 23 July 1968. Berry Gordy was not in the room. He watched the tape two days later and signed them almost at once.' },
       { place: 'Hayvenhurst', where: 'Encino, California', year: '1971 onward',
         lon: -118.49337, lat: 34.15474, z: 15, wiki: 'Hayvenhurst',
+        // The estate is walled and private, so no free photograph of the house
+        // exists. This is the nearest thing on Commons — the wall of tributes
+        // fans left at the family's gates — captioned so it can't be mistaken
+        // for a picture of the house. Commons' own author field is truncated
+        // mid-name by the Panoramio import, hence the spelled-out credit.
+        file: 'Remembering Michael Jackson - panoramio.jpg',
+        photoNote: 'Tributes left by fans at the family’s gates, 2009',
+        photoBy: 'Clotee Pridgen Allochuku',
         text: 'Joe Jackson bought this compound in May 1971, on the back of the Jackson 5’s first hits, and it became the family’s base for decades. Michael lived here until he was thirty, and cut demos for Off the Wall, Thriller and Bad in its home studio before Neverland became home.' },
       { place: 'Westlake Recording Studios', where: 'Los Angeles, California', year: '1979–1987',
         lon: -118.3745, lat: 34.0762, z: 16, wiki: 'Westlake Recording Studios',
@@ -1748,27 +1756,54 @@
         })
         .catch(function () { return null; });
     }
-    function photoFor(title) {
-      if (!photoCache[title]) {
-        photoCache[title] = fetchWikiPhoto(title).then(function (p) {
-          // pull the bytes down too, not just the URL, so the picture is already
-          // decoded when the tour lands rather than popping in a beat late
-          if (p && p.src) { const warm = new Image(); warm.src = p.src; }
-          return p;
-        });
-      }
-      return photoCache[title];
+    // A named Commons file, for places whose article has no lead image.
+    function fetchCommonsFile(name) {
+      const q = 'action=query&titles=' + encodeURIComponent('File:' + name)
+        + '&prop=imageinfo&iiprop=extmetadata|url&iiurlwidth=900&format=json&origin=*';
+      return withTimeout('https://commons.wikimedia.org/w/api.php?' + q, null, 10000)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const pg = Object.values((j.query && j.query.pages) || {})[0] || {};
+          const ii = pg.imageinfo && pg.imageinfo[0];
+          if (!ii || !ii.thumburl) return null;
+          const md = ii.extmetadata || {};
+          const plain = function (k) {
+            const v = md[k] && md[k].value;
+            return v ? v.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : '';
+          };
+          return { src: ii.thumburl, artist: plain('Artist'), licence: plain('LicenseShortName') };
+        })
+        .catch(function () { return null; });
     }
-    function setStopPhoto(p, alt) {
+    function photoFor(stop) {
+      const key = stop.file ? 'file:' + stop.file : stop.wiki;
+      if (!key) return Promise.resolve(null);
+      if (!photoCache[key]) {
+        photoCache[key] = (stop.file ? fetchCommonsFile(stop.file) : fetchWikiPhoto(stop.wiki))
+          .then(function (p) {
+            // pull the bytes down too, not just the URL, so the picture is already
+            // decoded when the tour lands rather than popping in a beat late
+            if (p && p.src) { const warm = new Image(); warm.src = p.src; }
+            return p;
+          });
+      }
+      return photoCache[key];
+    }
+    // `stop` supplies an optional note (when the picture needs explaining — it
+    // isn't always a plain shot of the place) and an optional photoBy, for the
+    // handful of Commons records whose author field is itself truncated.
+    function setStopPhoto(p, stop) {
       if (!p || !p.src) {
         photoFig.hidden = true; photoImg.removeAttribute('src');
         photoImg.alt = ''; photoCredit.textContent = '';    // never leave a stale credit
         return;
       }
+      const s = stop || {};
       photoImg.src = p.src;
-      photoImg.alt = alt ? 'Photograph of ' + alt : '';
-      const credit = [p.artist, p.licence].filter(Boolean).join(' · ');
-      photoCredit.textContent = credit ? credit + ' · via Wikimedia Commons' : 'via Wikimedia Commons';
+      photoImg.alt = s.photoNote || (s.place ? 'Photograph of ' + s.place : '');
+      const credit = [s.photoNote, s.photoBy || p.artist, p.licence, 'via Wikimedia Commons']
+        .filter(Boolean).join(' · ');
+      photoCredit.textContent = credit;
       photoFig.hidden = false;
     }
 
@@ -1792,7 +1827,7 @@
       // ignoring it if the tour has already moved on
       srcEl.textContent = SRC_TOUR;
       setStopPhoto(null);
-      if (stop.wiki) photoFor(stop.wiki).then(function (p) { if (id === reqId) setStopPhoto(p, stop.place); });
+      if (stop.wiki || stop.file) photoFor(stop).then(function (p) { if (id === reqId) setStopPhoto(p, stop); });
     }
 
     function startMJTour() {
@@ -1814,7 +1849,7 @@
           cardEl.classList.remove('show');
           autoSpin = false;
           // start every photo downloading now, so each stop has one by arrival
-          MJ_STOPS.forEach(function (s) { if (s.wiki) photoFor(s.wiki); });
+          MJ_STOPS.forEach(function (s) { if (s.wiki || s.file) photoFor(s); });
           await say(MJ_INTRO, 13000); if (!alive()) return;
           for (let i = 0; i < MJ_STOPS.length; i++) {
             const s = MJ_STOPS[i];
