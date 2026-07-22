@@ -93,6 +93,19 @@
   .places button:hover { color: var(--ink); border-color: var(--ink-soft); }
   .places button[aria-current="true"] { color: var(--ink); border-color: #6cb6ff; }
 
+  /* Photograph of a tour stop. Commons images are mostly CC-BY or CC-BY-SA, so
+     the caption carrying the photographer and licence isn't decoration — it's
+     the condition of using them. */
+  .stopphoto { margin: 0 0 18px; }
+  .stopphoto img {
+    display: block; width: 100%; height: auto; border-radius: 8px;
+    border: 1px solid var(--line); background: rgba(255,255,255,0.03);
+  }
+  .stopphoto figcaption {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.03em;
+    color: var(--ink-soft); margin-top: 7px; opacity: 0.85; line-height: 1.5;
+  }
+
   /* the globe turns on its own, so there has to be a way to stop it */
   .spinbtn {
     align-self: flex-start; appearance: none; cursor: pointer;
@@ -361,13 +374,17 @@
             <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="currentColor"/><path class="wave" d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
           </button>
         </div>
+        <figure id="stopPhoto" class="stopphoto" hidden>
+          <img id="stopImg" alt="" loading="lazy" referrerpolicy="no-referrer">
+          <figcaption id="stopCredit"></figcaption>
+        </figure>
         <div class="facts">
           <div class="fact"><p class="k" id="capK">Capital</p><p class="v" id="capital">—</p></div>
           <div class="fact"><p class="k" id="leaderK">Current leader</p><p class="v" id="leader">—</p></div>
         </div>
         <div id="bioWrap"><p class="bio" id="bio"></p></div>
         <button id="zoom" class="zoombtn" hidden type="button">Explore provinces &amp; cities →</button>
-        <p class="src">Capital, leaders &amp; flags: live from Wikidata · overview: AI</p>
+        <p class="src" id="srcNote">Capital, leaders &amp; flags: live from Wikidata · overview: AI</p>
       </div>
     </div>
   </div>
@@ -1649,33 +1666,100 @@
     const MJ_KEYS = ['michael jackson', 'king of pop'];
     const MJ_STOPS = [
       { place: '2300 Jackson Street', where: 'Gary, Indiana', year: '1958',
-        lon: -87.34643, lat: 41.59337, z: 14,
+        lon: -87.34643, lat: 41.59337, z: 14, wiki: 'Michael Jackson Childhood Home',
         text: 'He was born here on 29 August 1958, in a two-bedroom house on Jackson Street — named for a president, not for the family. At one point all eleven Jacksons lived inside its 672 square feet. Everything that followed started in a house smaller than most living rooms.' },
       { place: 'The Apollo Theater', where: 'Harlem, New York', year: '1967',
-        lon: -73.9500, lat: 40.8100, z: 16,
+        lon: -73.9500, lat: 40.8100, z: 16, wiki: 'Apollo Theater',
         text: 'On 13 August 1967 the Jackson brothers won Amateur Night on this stage. Michael was nine. The win brought a run of paid shows at the Apollo and the first hard evidence that Gary would not be the end of the story.' },
       { place: 'Hitsville U.S.A.', where: 'Detroit, Michigan', year: '1968',
-        lon: -83.0889, lat: 42.3644, z: 16,
+        lon: -83.0889, lat: 42.3644, z: 16, wiki: 'Hitsville U.S.A.',
         text: 'The brothers auditioned for Motown in this house on West Grand Boulevard on 23 July 1968. Berry Gordy was not in the room. He watched the tape two days later and signed them almost at once.' },
-      { place: 'Los Angeles', where: 'California', year: '1969 onward',
-        lon: -118.2437, lat: 34.0522, z: 11,
-        text: 'The family moved west as the records began to climb, and Motown itself followed in 1972. For most of the next four decades this city was the centre of his working life.' },
+      { place: 'Westlake Recording Studios', where: 'Los Angeles, California', year: '1979–1987',
+        lon: -118.3745, lat: 34.0762, z: 16, wiki: 'Westlake Recording Studios',
+        text: 'Thriller was recorded in this building between April and November 1982 with Quincy Jones, and parts of Off the Wall and Bad were made here too. An ordinary block on Beverly Boulevard behind the best-selling album ever released.' },
       { place: 'Neverland Valley Ranch', where: 'Los Olivos, California', year: '1988–2005',
-        lon: -120.1361, lat: 34.7439, z: 14,
+        lon: -120.1361, lat: 34.7439, z: 14, wiki: 'Neverland Ranch',
         text: 'He bought this land on Figueroa Mountain Road in 1987 and named it for the island in Peter Pan. It was his home from 1988 until 2005 — roughly 2,700 acres with gardens, a railway and a fairground.' },
       { place: 'The O2 Arena', where: 'London, England', year: '2009',
-        lon: 0.0032, lat: 51.5030, z: 15,
+        lon: 0.0032, lat: 51.5030, z: 15, wiki: 'The O2 Arena',
         text: 'On 5 March 2009 he announced a run of comeback concerts here. Demand pushed it to fifty dates and more than a million tickets sold in under two hours. He died on 25 June, eighteen days before the first night.' },
       { place: 'Forest Lawn Memorial Park', where: 'Glendale, California', year: '2009',
-        lon: -118.2453, lat: 34.1197, z: 15,
+        lon: -118.2453, lat: 34.1197, z: 15, wiki: 'Forest Lawn Memorial Park, Glendale',
         text: 'He was laid to rest here on 3 September 2009, a few miles from the city he had worked in since he was a boy.' }
     ];
     const MJ_INTRO = 'A short tour of the places that made Michael Jackson — from a two-bedroom house in Indiana to a stage in London he never got to stand on.';
     const MJ_OUTRO = 'Seven places, one life. Tap anywhere to carry on exploring by yourself.';
 
+    // ---- photographs of the stops ----
+    // Wikipedia's lead image for the place, plus the credit it's published
+    // under. Nearly everything on Commons is CC-BY or CC-BY-SA, so the
+    // photographer and licence have to travel with the picture.
+    const photoFig = document.getElementById('stopPhoto');
+    const photoImg = document.getElementById('stopImg');
+    const photoCredit = document.getElementById('stopCredit');
+    const photoCache = {};
+    // The footer credits Wikidata and the AI overview, which is true of a place
+    // card and not of a tour stop — those are photographs and written text.
+    const srcEl = document.getElementById('srcNote');
+    const SRC_PLACE = srcEl.textContent;
+    const SRC_TOUR = 'Photographs from Wikimedia Commons, credited above';
+
+    function fetchWikiPhoto(title) {
+      const q1 = 'action=query&titles=' + encodeURIComponent(title)
+        + '&prop=pageimages&piprop=thumbnail|name&pithumbsize=900&redirects=1&format=json&origin=*';
+      return withTimeout('https://en.wikipedia.org/w/api.php?' + q1, null, 10000)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const pg = Object.values((j.query && j.query.pages) || {})[0] || {};
+          const src = pg.thumbnail && pg.thumbnail.source;
+          if (!src || !pg.pageimage) return null;
+          // The files live on Commons — en.wikipedia reports them "missing" and
+          // only answers at all through its shared-repository fallback, so ask
+          // the host that actually holds the licensing data.
+          const q2 = 'action=query&titles=' + encodeURIComponent('File:' + pg.pageimage)
+            + '&prop=imageinfo&iiprop=extmetadata&format=json&origin=*';
+          return withTimeout('https://commons.wikimedia.org/w/api.php?' + q2, null, 10000)
+            .then(function (r) { return r.json(); })
+            .then(function (j2) {
+              const f = Object.values((j2.query && j2.query.pages) || {})[0] || {};
+              const md = (f.imageinfo && f.imageinfo[0] && f.imageinfo[0].extmetadata) || {};
+              const plain = function (k) {
+                const v = md[k] && md[k].value;
+                return v ? v.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : '';
+              };
+              return { src: src, artist: plain('Artist'), licence: plain('LicenseShortName') };
+            })
+            .catch(function () { return { src: src, artist: '', licence: '' }; });
+        })
+        .catch(function () { return null; });
+    }
+    function photoFor(title) {
+      if (!photoCache[title]) {
+        photoCache[title] = fetchWikiPhoto(title).then(function (p) {
+          // pull the bytes down too, not just the URL, so the picture is already
+          // decoded when the tour lands rather than popping in a beat late
+          if (p && p.src) { const warm = new Image(); warm.src = p.src; }
+          return p;
+        });
+      }
+      return photoCache[title];
+    }
+    function setStopPhoto(p, alt) {
+      if (!p || !p.src) {
+        photoFig.hidden = true; photoImg.removeAttribute('src');
+        photoImg.alt = ''; photoCredit.textContent = '';    // never leave a stale credit
+        return;
+      }
+      photoImg.src = p.src;
+      photoImg.alt = alt ? 'Photograph of ' + alt : '';
+      const credit = [p.artist, p.licence].filter(Boolean).join(' · ');
+      photoCredit.textContent = credit ? credit + ' · via Wikimedia Commons' : 'via Wikimedia Commons';
+      photoFig.hidden = false;
+    }
+
     // The card, filled by hand — these stops aren't in any of the datasets.
     function showTourStop(stop, i, total) {
-      reqId++;                                  // cancel any in-flight lookups
+      const id = ++reqId;                       // cancel any in-flight lookups
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
       speakEl.hidden = false;
@@ -1689,6 +1773,11 @@
       leaderEl.innerHTML = '<span class="ldr">' + esc(stop.where) + '</span>';
       bioWrap.innerHTML = '<p class="bio"></p>';
       bioWrap.querySelector('.bio').textContent = stop.text;
+      // hide last stop's picture, then swap in this one when it arrives —
+      // ignoring it if the tour has already moved on
+      srcEl.textContent = SRC_TOUR;
+      setStopPhoto(null);
+      if (stop.wiki) photoFor(stop.wiki).then(function (p) { if (id === reqId) setStopPhoto(p, stop.place); });
     }
 
     function startMJTour() {
@@ -1709,6 +1798,8 @@
           backEl.hidden = true; loadingEl.hidden = true; placesEl.hidden = true;
           cardEl.classList.remove('show');
           autoSpin = false;
+          // start every photo downloading now, so each stop has one by arrival
+          MJ_STOPS.forEach(function (s) { if (s.wiki) photoFor(s.wiki); });
           await say(MJ_INTRO, 13000); if (!alive()) return;
           for (let i = 0; i < MJ_STOPS.length; i++) {
             const s = MJ_STOPS[i];
@@ -2091,6 +2182,7 @@
       const id = ++reqId;
       const name = f.properties.name;
       setPlaceParam(name);
+      setStopPhoto(null); srcEl.textContent = SRC_PLACE;
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
       stopNarration(); speakEl.hidden = false;
@@ -2136,6 +2228,7 @@
       const name = p.name_en || p.name || p.iso_3166_2 || 'Region';
       const type = p.type_en || p.type || 'region';
       setPlaceParam(name);
+      setStopPhoto(null); srcEl.textContent = SRC_PLACE;
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
       stopNarration(); speakEl.hidden = false;
@@ -2189,6 +2282,7 @@
       const id = ++reqId;
       const name = c.name || 'City';
       setPlaceParam(name);
+      setStopPhoto(null); srcEl.textContent = SRC_PLACE;
       const isCap = isCapital(c);
       const provName = drillRegion && (drillRegion.properties.name || drillRegion.properties.name_en);
       const cntryName = drillCountry && drillCountry.properties.name;
