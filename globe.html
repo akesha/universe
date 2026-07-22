@@ -698,8 +698,16 @@
       img.crossOrigin = 'anonymous';
       img.ok = false;
       tilesInFlight++;
-      img.onload = function () { img.ok = true; tilesInFlight--; };
-      img.onerror = function () { tilesInFlight--; tileCache.delete(key); };
+      // Every exit has to give the slot back. Flying somewhere new mid-request
+      // makes the browser cancel it, and a cancelled image fires neither load
+      // nor error — so counting only those two leaked the counter until it sat
+      // permanently above the cap and no tile could ever start again.
+      let settled = false;
+      const release = function () { if (settled) return; settled = true; tilesInFlight--; };
+      img.onload = function () { img.ok = true; release(); };
+      img.onerror = function () { release(); tileCache.delete(key); };
+      img.onabort = function () { release(); tileCache.delete(key); };
+      setTimeout(function () { if (!settled) { release(); tileCache.delete(key); } }, 15000);
       tileCache.set(key, img);
       img.src = TILE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
       if (tileCache.size > 500) tileCache.delete(tileCache.keys().next().value);
@@ -1674,9 +1682,15 @@
       { place: 'Hitsville U.S.A.', where: 'Detroit, Michigan', year: '1968',
         lon: -83.0889, lat: 42.3644, z: 16, wiki: 'Hitsville U.S.A.',
         text: 'The brothers auditioned for Motown in this house on West Grand Boulevard on 23 July 1968. Berry Gordy was not in the room. He watched the tape two days later and signed them almost at once.' },
+      { place: 'Hayvenhurst', where: 'Encino, California', year: '1971 onward',
+        lon: -118.4944, lat: 34.1533, z: 15, wiki: 'Hayvenhurst',
+        text: 'Joe Jackson bought this compound in May 1971, on the back of the Jackson 5’s first hits, and it became the family’s base for decades. Michael lived here until he was thirty, and cut demos for Off the Wall, Thriller and Bad in its home studio before Neverland became home.' },
       { place: 'Westlake Recording Studios', where: 'Los Angeles, California', year: '1979–1987',
         lon: -118.3745, lat: 34.0762, z: 16, wiki: 'Westlake Recording Studios',
         text: 'Thriller was recorded in this building between April and November 1982 with Quincy Jones, and parts of Off the Wall and Bad were made here too. An ordinary block on Beverly Boulevard behind the best-selling album ever released.' },
+      { place: 'Walt Disney World', where: 'Lake Buena Vista, Florida', year: '1983',
+        lon: -81.5812, lat: 28.4177, z: 14, wiki: 'Walt Disney World',
+        text: 'He was a lifelong Disney fan and came back to these parks again and again. In December 1983 the Hotel Royal Plaza, on the hotel row just east of here, named a four-bedroom suite after him — done in his black, white and red, and hung with awards he lent it, from Grammys to a plaque for thirty-seven gold and platinum records. When he wasn’t staying in it, anyone could book it.' },
       { place: 'Neverland Valley Ranch', where: 'Los Olivos, California', year: '1988–2005',
         lon: -120.1361, lat: 34.7439, z: 14, wiki: 'Neverland Ranch',
         text: 'He bought this land on Figueroa Mountain Road in 1987 and named it for the island in Peter Pan. It was his home from 1988 until 2005 — roughly 2,700 acres with gardens, a railway and a fairground.' },
@@ -1688,7 +1702,8 @@
         text: 'He was laid to rest here on 3 September 2009, a few miles from the city he had worked in since he was a boy.' }
     ];
     const MJ_INTRO = 'A short tour of the places that made Michael Jackson — from a two-bedroom house in Indiana to a stage in London he never got to stand on.';
-    const MJ_OUTRO = 'Seven places, one life. Tap anywhere to carry on exploring by yourself.';
+    // counted from the list, so adding a stop can't leave the closing line lying
+    const MJ_OUTRO = MJ_STOPS.length + ' places, one life. Tap anywhere to carry on exploring by yourself.';
 
     // ---- photographs of the stops ----
     // Wikipedia's lead image for the place, plus the credit it's published
