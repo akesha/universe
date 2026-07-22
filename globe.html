@@ -1642,6 +1642,91 @@
       })();
     }
 
+    // ── a hidden tour: type his name into the search box ───────────────────
+    // Seven places, in order, from the house he was born in to the one he was
+    // buried from. Dates and addresses are the documented ones; the coordinates
+    // point at the actual buildings where a building is the point.
+    const MJ_KEYS = ['michael jackson', 'king of pop'];
+    const MJ_STOPS = [
+      { place: '2300 Jackson Street', where: 'Gary, Indiana', year: '1958',
+        lon: -87.34643, lat: 41.59337, z: 14,
+        text: 'He was born here on 29 August 1958, in a two-bedroom house on Jackson Street — named for a president, not for the family. At one point all eleven Jacksons lived inside its 672 square feet. Everything that followed started in a house smaller than most living rooms.' },
+      { place: 'The Apollo Theater', where: 'Harlem, New York', year: '1967',
+        lon: -73.9500, lat: 40.8100, z: 16,
+        text: 'On 13 August 1967 the Jackson brothers won Amateur Night on this stage. Michael was nine. The win brought a run of paid shows at the Apollo and the first hard evidence that Gary would not be the end of the story.' },
+      { place: 'Hitsville U.S.A.', where: 'Detroit, Michigan', year: '1968',
+        lon: -83.0889, lat: 42.3644, z: 16,
+        text: 'The brothers auditioned for Motown in this house on West Grand Boulevard on 23 July 1968. Berry Gordy was not in the room. He watched the tape two days later and signed them almost at once.' },
+      { place: 'Los Angeles', where: 'California', year: '1969 onward',
+        lon: -118.2437, lat: 34.0522, z: 11,
+        text: 'The family moved west as the records began to climb, and Motown itself followed in 1972. For most of the next four decades this city was the centre of his working life.' },
+      { place: 'Neverland Valley Ranch', where: 'Los Olivos, California', year: '1988–2005',
+        lon: -120.1361, lat: 34.7439, z: 14,
+        text: 'He bought this land on Figueroa Mountain Road in 1987 and named it for the island in Peter Pan. It was his home from 1988 until 2005 — roughly 2,700 acres with gardens, a railway and a fairground.' },
+      { place: 'The O2 Arena', where: 'London, England', year: '2009',
+        lon: 0.0032, lat: 51.5030, z: 15,
+        text: 'On 5 March 2009 he announced a run of comeback concerts here. Demand pushed it to fifty dates and more than a million tickets sold in under two hours. He died on 25 June, eighteen days before the first night.' },
+      { place: 'Forest Lawn Memorial Park', where: 'Glendale, California', year: '2009',
+        lon: -118.2453, lat: 34.1197, z: 15,
+        text: 'He was laid to rest here on 3 September 2009, a few miles from the city he had worked in since he was a boy.' }
+    ];
+    const MJ_INTRO = 'A short tour of the places that made Michael Jackson — from a two-bedroom house in Indiana to a stage in London he never got to stand on.';
+    const MJ_OUTRO = 'Seven places, one life. Tap anywhere to carry on exploring by yourself.';
+
+    // The card, filled by hand — these stops aren't in any of the datasets.
+    function showTourStop(stop, i, total) {
+      reqId++;                                  // cancel any in-flight lookups
+      hintEl.style.display = 'none';
+      cardEl.classList.add('show');
+      speakEl.hidden = false;
+      setFlag(null);
+      zoomEl.hidden = true;
+      placesEl.hidden = true;
+      eyebrowEl.textContent = 'Michael Jackson · ' + (i + 1) + ' of ' + total;
+      nameEl.textContent = stop.place;
+      capKEl.textContent = 'Year'; capEl.textContent = stop.year; delete capEl.dataset.spoken;
+      leaderKEl.textContent = 'Where';
+      leaderEl.innerHTML = '<span class="ldr">' + esc(stop.where) + '</span>';
+      bioWrap.innerHTML = '<p class="bio"></p>';
+      bioWrap.querySelector('.bio').textContent = stop.text;
+    }
+
+    function startMJTour() {
+      if (!countriesFC) return;
+      const token = ++tourToken;
+      setTourUI(true);
+      setPlaceParam('Michael Jackson');          // the whole tour is linkable
+      const alive = function () { return token === tourToken; };
+      const say = function (text, maxMs) {
+        if (!alive()) return Promise.resolve();
+        return Promise.race([speak(text), tourSleep(maxMs || 9000)]);
+      };
+      (async function () {
+        try {
+          // drop any drill state — these stops are flown to over the plain globe
+          mode = 'world'; regionsFC = null; selectedRegion = null; selected = null;
+          cityList = null; selectedCity = null; drillRegion = null; drillCountry = null;
+          backEl.hidden = true; loadingEl.hidden = true; placesEl.hidden = true;
+          cardEl.classList.remove('show');
+          autoSpin = false;
+          await say(MJ_INTRO, 13000); if (!alive()) return;
+          for (let i = 0; i < MJ_STOPS.length; i++) {
+            const s = MJ_STOPS[i];
+            flyTo(s.lon, s.lat, scaleForTileZoom(s.z, s.lat));
+            await tourSleep(1700); if (!alive()) return;   // let the flight and the tiles land
+            showTourStop(s, i, MJ_STOPS.length);
+            await say(s.text, 20000); if (!alive()) return;
+            await tourSleep(700); if (!alive()) return;
+          }
+          await say(MJ_OUTRO, 11000);
+        } catch (e) {
+          /* best-effort, like the other tours */
+        } finally {
+          if (token === tourToken) setTourUI(false);
+        }
+      })();
+    }
+
     // ── place search ──────────────────────────────────────────────────────
     // Type a city or country and jump straight there — for a city it drills the
     // whole way in (country → state → city) so you never need to know where it is.
@@ -1683,8 +1768,13 @@
     // namesake city (New York, Tokyo) beats its state while a small-town name
     // (Bahia, Georgia's towns) lets the region win.
     const RANK_COUNTRY = Infinity, RANK_REGION = 1e6;
+    function isMJQuery(nq) {
+      return MJ_KEYS.some(function (k) { return k === nq || (nq.length >= 6 && k.indexOf(nq) === 0); });
+    }
     function rankedHits(nq) {
       const hits = [];
+      // rank -1 keeps the hidden tour above every real place once it's summoned
+      if (isMJQuery(nq)) hits.push({ kind: 'mjtour', name: 'Michael Jackson', rank: -1, pop: RANK_COUNTRY });
       if (countriesFC) {
         for (const f of countriesFC.features) {
           const r = matchRank(f.properties.name, nq);
@@ -1718,7 +1808,8 @@
     }
     function dispatchHit(h) {
       if (!h) return;
-      if (h.kind === 'country') gotoCountry(h.feature);
+      if (h.kind === 'mjtour') startMJTour();
+      else if (h.kind === 'country') gotoCountry(h.feature);
       else if (h.kind === 'region') gotoRegion(h.feature);
       else gotoCity(h.city);
     }
@@ -1737,6 +1828,8 @@
         const ctx = document.createElement('span'); ctx.className = 'ctx';
         if (h.kind === 'country') {
           ctx.textContent = 'Country';
+        } else if (h.kind === 'mjtour') {
+          ctx.textContent = 'A tour of the places that made him';
         } else if (h.kind === 'region') {
           const cn = h.feature.properties.admin || h.feature.properties.geonunit || '';
           ctx.textContent = ['State / province', cn].filter(Boolean).join(' · ');
@@ -1863,6 +1956,8 @@
       const q = new URLSearchParams(location.search).get('place');
       if (!q || !countriesFC) return;
       const nq = norm(q).trim();
+      // The hidden tour flies to fixed coordinates, so it needs no datasets.
+      if (isMJQuery(nq)) { startMJTour(); return; }
       // An exact country match needs no extra data — take it and skip the fetch.
       const exactCountry = countriesFC.features.find(function (f) { return matchRank(f.properties.name, nq) === 0; });
       if (exactCountry) { gotoCountry(exactCountry); return; }
