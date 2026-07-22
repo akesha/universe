@@ -96,6 +96,13 @@
   /* Photograph of a tour stop. Commons images are mostly CC-BY or CC-BY-SA, so
      the caption carrying the photographer and licence isn't decoration — it's
      the condition of using them. */
+  /* what's playing at this stop — Apple serves the audio, we just name it */
+  .nowplaying {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+    color: var(--accent, #6cb6ff); margin: 0 0 12px; line-height: 1.5;
+  }
+  .nowplaying[hidden] { display: none; }
+
   .stopphoto { margin: 0 0 18px; }
   .stopphoto img {
     display: block; width: 100%; height: auto; border-radius: 8px;
@@ -374,6 +381,7 @@
             <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="currentColor"/><path class="wave" d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
           </button>
         </div>
+        <p id="nowPlaying" class="nowplaying" hidden aria-live="polite"></p>
         <figure id="stopPhoto" class="stopphoto" hidden>
           <img id="stopImg" alt="" loading="lazy" referrerpolicy="no-referrer">
           <figcaption id="stopCredit"></figcaption>
@@ -1555,7 +1563,7 @@
       tourLabelEl.textContent = on ? 'Stop tour' : 'Narrated tour';
       tourIconEl.textContent = on ? '■' : '▶';
     }
-    function stopTour() { tourToken++; setTourUI(false); stopNarration(); }
+    function stopTour() { tourToken++; setTourUI(false); stopNarration(); stopTourAudio(); }
     tourEl.addEventListener('click', function () { if (tourRunning) stopTour(); else startTour(); });
 
     function startTour() {
@@ -1673,16 +1681,16 @@
     // point at the actual buildings where a building is the point.
     const MJ_KEYS = ['michael jackson', 'king of pop'];
     const MJ_STOPS = [
-      { place: '2300 Jackson Street', where: 'Gary, Indiana', year: '1958',
+      { place: '2300 Jackson Street', song: 'I Want You Back', songBy: 'The Jackson 5', where: 'Gary, Indiana', year: '1958',
         lon: -87.34643, lat: 41.59337, z: 14, wiki: 'Michael Jackson Childhood Home',
         text: 'He was born here on 29 August 1958, in a two-bedroom house on Jackson Street — named for a president, not for the family. At one point all eleven Jacksons lived inside its 672 square feet. Everything that followed started in a house smaller than most living rooms.' },
-      { place: 'The Apollo Theater', where: 'Harlem, New York', year: '1967',
+      { place: 'The Apollo Theater', song: "Who's Lovin' You", songBy: 'The Jackson 5', where: 'Harlem, New York', year: '1967',
         lon: -73.9500, lat: 40.8100, z: 16, wiki: 'Apollo Theater',
         text: 'On 13 August 1967 the Jackson brothers won Amateur Night on this stage. Michael was nine. The win brought a run of paid shows at the Apollo and the first hard evidence that Gary would not be the end of the story.' },
-      { place: 'Hitsville U.S.A.', where: 'Detroit, Michigan', year: '1968',
+      { place: 'Hitsville U.S.A.', song: 'ABC', songBy: 'The Jackson 5', where: 'Detroit, Michigan', year: '1968',
         lon: -83.0889, lat: 42.3644, z: 16, wiki: 'Hitsville U.S.A.',
         text: 'The brothers auditioned for Motown in this house on West Grand Boulevard on 23 July 1968. Berry Gordy was not in the room. He watched the tape two days later and signed them almost at once.' },
-      { place: 'Hayvenhurst', where: 'Encino, California', year: '1971 onward',
+      { place: 'Hayvenhurst', song: 'Off the Wall', songBy: 'Michael Jackson', where: 'Encino, California', year: '1971 onward',
         lon: -118.49337, lat: 34.15474, z: 15, wiki: 'Hayvenhurst',
         // The estate is walled and private, so no free photograph of the house
         // exists. This is the nearest thing on Commons — the wall of tributes
@@ -1693,19 +1701,19 @@
         photoNote: 'Tributes left by fans at the family’s gates, 2009',
         photoBy: 'Clotee Pridgen Allochuku',
         text: 'Joe Jackson bought this compound in May 1971, on the back of the Jackson 5’s first hits, and it became the family’s base for decades. Michael lived here until he was thirty, and cut demos for Off the Wall, Thriller and Bad in its home studio before Neverland became home.' },
-      { place: 'Westlake Recording Studios', where: 'Los Angeles, California', year: '1979–1987',
+      { place: 'Westlake Recording Studios', song: 'Billie Jean', songBy: 'Michael Jackson', where: 'Los Angeles, California', year: '1979–1987',
         lon: -118.3745, lat: 34.0762, z: 16, wiki: 'Westlake Recording Studios',
         text: 'Thriller was recorded in this building between April and November 1982 with Quincy Jones, and parts of Off the Wall and Bad were made here too. An ordinary block on Beverly Boulevard behind the best-selling album ever released.' },
-      { place: 'Walt Disney World', where: 'Lake Buena Vista, Florida', year: '1983',
+      { place: 'Walt Disney World', song: 'Thriller', songBy: 'Michael Jackson', where: 'Lake Buena Vista, Florida', year: '1983',
         lon: -81.5812, lat: 28.4177, z: 14, wiki: 'Walt Disney World',
         text: 'He was a lifelong Disney fan and came back to these parks again and again. In December 1983 the Hotel Royal Plaza, on the hotel row just east of here, named a four-bedroom suite after him — done in his black, white and red, and hung with awards he lent it, from Grammys to a plaque for thirty-seven gold and platinum records. When he wasn’t staying in it, anyone could book it.' },
-      { place: 'Neverland Valley Ranch', where: 'Los Olivos, California', year: '1988–2005',
+      { place: 'Neverland Valley Ranch', song: 'Man in the Mirror', songBy: 'Michael Jackson', songAlbum: 'Bad', where: 'Los Olivos, California', year: '1988–2005',
         lon: -120.1361, lat: 34.7439, z: 14, wiki: 'Neverland Ranch',
         text: 'He bought this land on Figueroa Mountain Road in 1987 and named it for the island in Peter Pan. It was his home from 1988 until 2005 — roughly 2,700 acres with gardens, a railway and a fairground.' },
-      { place: 'The O2 Arena', where: 'London, England', year: '2009',
+      { place: 'The O2 Arena', song: 'This Is It', songBy: 'Michael Jackson', where: 'London, England', year: '2009',
         lon: 0.0032, lat: 51.5030, z: 15, wiki: 'The O2 Arena',
         text: 'On 5 March 2009 he announced a run of comeback concerts here. Demand pushed it to fifty dates and more than a million tickets sold in under two hours. He died on 25 June, eighteen days before the first night.' },
-      { place: 'Forest Lawn Memorial Park', where: 'Glendale, California', year: '2009',
+      { place: 'Forest Lawn Memorial Park', song: 'Gone Too Soon', songBy: 'Michael Jackson', where: 'Glendale, California', year: '2009',
         lon: -118.2453, lat: 34.1197, z: 15, wiki: 'Forest Lawn Memorial Park, Glendale',
         text: 'He was laid to rest here on 3 September 2009, a few miles from the city he had worked in since he was a boy.' }
     ];
@@ -1807,6 +1815,87 @@
       photoFig.hidden = false;
     }
 
+    // ---- a song for each stop ----------------------------------------------
+    // Apple's search endpoint needs no key and allows browser requests, and the
+    // thirty-second previews are served from their own CDN under their own
+    // licensing — which is the only reason this is playable here at all. We
+    // never host or serve any audio ourselves.
+    const trackCache = {};
+    const nowPlayingEl = document.getElementById('nowPlaying');
+    const tourAudio = new Audio();
+    tourAudio.preload = 'auto';
+
+    // Search results are thick with karaoke, tribute and "made famous by"
+    // re-recordings, so match the artist and title rather than taking the top row.
+    function pickTrack(results, song, artist, album) {
+      const norm2 = function (x) { return norm(x || '').replace(/[^a-z0-9 ]/g, '').trim(); };
+      const wantTitle = norm2(song), wantArtist = norm2(artist);
+      const junk = /karaoke|tribute|cover|made famous|instrumental|in the style of|backing track/i;
+      const scored = results.filter(function (r) {
+        if (!r.previewUrl) return false;
+        if (junk.test(r.trackName + ' ' + r.collectionName + ' ' + r.artistName)) return false;
+        return norm2(r.artistName).indexOf(wantArtist) !== -1
+            || wantArtist.indexOf(norm2(r.artistName)) !== -1;
+      }).map(function (r) {
+        const t = norm2(r.trackName);
+        // album is a tiebreak: without it a search can land on a later remix
+        // compilation rather than the record the song actually came from
+        const onWanted = album && norm2(r.collectionName).indexOf(norm2(album)) !== -1 ? 0 : 1;
+        return { r: r, exact: t === wantTitle ? 0 : (t.indexOf(wantTitle) === 0 ? 1 : 2), album: onWanted };
+      }).sort(function (a, b) { return a.exact - b.exact || a.album - b.album; });
+      return scored.length && scored[0].exact < 2 ? scored[0].r : null;
+    }
+
+    function fetchTrack(song, artist, album) {
+      const url = 'https://itunes.apple.com/search?entity=song&limit=25&term='
+        + encodeURIComponent(artist + ' ' + song);
+      return withTimeout(url, null, 10000)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          const hit = pickTrack(j.results || [], song, artist, album);
+          if (!hit) return null;
+          return { name: hit.trackName, album: hit.collectionName, artist: hit.artistName, src: hit.previewUrl };
+        })
+        .catch(function () { return null; });
+    }
+    function trackFor(stop) {
+      if (!stop.song) return Promise.resolve(null);
+      const key = stop.songBy + '|' + stop.song + '|' + (stop.songAlbum || '');
+      if (!trackCache[key]) trackCache[key] = fetchTrack(stop.song, stop.songBy, stop.songAlbum);
+      return trackCache[key];
+    }
+
+    function stopTourAudio() {
+      try { tourAudio.pause(); } catch (e) {}
+      tourAudio.removeAttribute('src');
+      nowPlayingEl.hidden = true; nowPlayingEl.textContent = '';
+    }
+
+    // Play the preview for a while, then fade out. Resolves either way, and
+    // resolves immediately if the browser refuses to autoplay.
+    function playPreview(track, alive, ms) {
+      if (!track) return Promise.resolve();
+      nowPlayingEl.textContent = '♪ ' + track.name + ' · ' + track.artist + ' — 30-second preview from Apple';
+      nowPlayingEl.hidden = false;
+      tourAudio.src = track.src;
+      tourAudio.currentTime = 0;
+      tourAudio.volume = 0.85;
+      return Promise.resolve(tourAudio.play())
+        .catch(function () { return null; })          // autoplay blocked: just move on
+        .then(function () {
+          return new Promise(function (done) {
+            const finish = function () { clearInterval(fade); stopTourAudio(); done(); };
+            const stopAt = Date.now() + (ms || 18000);
+            const fade = setInterval(function () {
+              if (!alive() || tourAudio.ended) return finish();
+              const left = stopAt - Date.now();
+              if (left <= 0) return finish();
+              if (left < 2000) tourAudio.volume = Math.max(0, 0.85 * (left / 2000));
+            }, 120);
+          });
+        });
+    }
+
     // The card, filled by hand — these stops aren't in any of the datasets.
     function showTourStop(stop, i, total) {
       const id = ++reqId;                       // cancel any in-flight lookups
@@ -1826,6 +1915,7 @@
       // hide last stop's picture, then swap in this one when it arrives —
       // ignoring it if the tour has already moved on
       srcEl.textContent = SRC_TOUR;
+      nowPlayingEl.hidden = true;
       setStopPhoto(null);
       if (stop.wiki || stop.file) photoFor(stop).then(function (p) { if (id === reqId) setStopPhoto(p, stop); });
     }
@@ -1849,7 +1939,7 @@
           cardEl.classList.remove('show');
           autoSpin = false;
           // start every photo downloading now, so each stop has one by arrival
-          MJ_STOPS.forEach(function (s) { if (s.wiki || s.file) photoFor(s); });
+          MJ_STOPS.forEach(function (s) { if (s.wiki || s.file) photoFor(s); trackFor(s); });
           await say(MJ_INTRO, 13000); if (!alive()) return;
           for (let i = 0; i < MJ_STOPS.length; i++) {
             const s = MJ_STOPS[i];
@@ -1857,7 +1947,9 @@
             await tourSleep(1700); if (!alive()) return;   // let the flight and the tiles land
             showTourStop(s, i, MJ_STOPS.length);
             await say(s.text, 20000); if (!alive()) return;
-            await tourSleep(700); if (!alive()) return;
+            await playPreview(await trackFor(s), alive, 18000);
+            if (!alive()) return;
+            await tourSleep(500); if (!alive()) return;
           }
           await say(MJ_OUTRO, 11000);
         } catch (e) {
