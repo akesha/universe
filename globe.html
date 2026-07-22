@@ -238,6 +238,18 @@
   .tourbtn:hover { border-color: #6cb6ff; }
   .tourbtn.running { border-color: #6cb6ff; background: rgba(30,52,96,0.55); }
   .tourbtn .ticon { font-size: 10px; color: #8fb8ff; }
+  .tourrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tourrow .tourbtn { margin-right: 0; }
+  /* only surfaces while a narrated tour is running, so it inherits the row's margins */
+  .skipbtn {
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-soft, #98a0b3);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 9px 14px; border-radius: 100px; margin: 14px 0 4px;
+    transition: color .15s, border-color .15s;
+  }
+  .skipbtn:hover { color: var(--ink); border-color: #6cb6ff; }
+  .skipbtn[hidden] { display: none; }
   .cosmiclink {
     display: block; margin: 4px 0 0 2px; padding: 7px 0; min-height: 24px;
     font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em;
@@ -370,7 +382,10 @@
         <h2 id="placesHead" class="placeshead"></h2>
         <ul id="placeList"></ul>
       </nav>
-      <button id="tour" class="tourbtn" type="button"><span class="ticon">▶</span><span id="tourlabel">Narrated tour</span></button>
+      <div class="tourrow">
+        <button id="tour" class="tourbtn" type="button"><span class="ticon">▶</span><span id="tourlabel">Narrated tour</span></button>
+        <button id="skip" class="skipbtn" type="button" hidden>Skip stop ›</button>
+      </div>
       <a id="cosmiclink" class="cosmiclink" href="local-group.html?tour=1" target="_top">▲ or the full journey, from the Local Group</a>
       <div id="card" class="card">
         <p class="eyebrow" id="eyebrow">Country</p>
@@ -1555,8 +1570,10 @@
     const tourEl = document.getElementById('tour');
     const tourLabelEl = document.getElementById('tourlabel');
     const tourIconEl = tourEl.querySelector('.ticon');
+    const skipEl = document.getElementById('skip');
     let tourRunning = false, tourToken = 0;
     function tourSleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function deferred() { const d = {}; d.promise = new Promise(function (r) { d.resolve = r; }); return d; }
     function setTourUI(on) {
       tourRunning = on;
       tourEl.classList.toggle('running', on);
@@ -1944,15 +1961,36 @@
       if (stop.wiki || stop.file) photoFor(stop).then(function (p) { if (id === reqId) setStopPhoto(p, stop); });
     }
 
+    // The skip button cuts short whatever the current stop is waiting on —
+    // its narration, its song, or the flight in — and drops straight to the
+    // next. Each stop gets a fresh promise that skip resolves; every wait races
+    // against it and reports back whether it was skipped.
+    let mjSkip = null;
+    function requestMJSkip() {
+      if (!mjSkip) return;
+      stopNarration(); stopTourAudio();      // don't let the voice or song bleed over
+      const d = mjSkip; mjSkip = null;        // a second click before the next stop is a no-op
+      d.resolve();
+    }
+    document.getElementById('skip').addEventListener('click', requestMJSkip);
+
     function startMJTour() {
       if (!countriesFC) return;
       const token = ++tourToken;
       setTourUI(true);
+      skipEl.hidden = false;
       setPlaceParam('Michael Jackson');          // the whole tour is linkable
       const alive = function () { return token === tourToken; };
       const say = function (text, maxMs) {
         if (!alive()) return Promise.resolve();
         return Promise.race([speak(text), tourSleep(maxMs || 9000)]);
+      };
+      // race a wait against the current stop's skip; resolves true if skipped
+      const untilSkip = function (p) {
+        return Promise.race([
+          Promise.resolve(p).then(function () { return false; }),
+          mjSkip.promise.then(function () { return true; })
+        ]);
       };
       (async function () {
         try {
@@ -1964,21 +2002,28 @@
           autoSpin = false;
           // start every photo downloading now, so each stop has one by arrival
           MJ_STOPS.forEach(function (s) { if (s.wiki || s.file) photoFor(s); trackFor(s); });
-          await say(MJ_INTRO, 13000); if (!alive()) return;
+          mjSkip = deferred();
+          if (await untilSkip(say(MJ_INTRO, 13000)) && !alive()) return;
           for (let i = 0; i < MJ_STOPS.length; i++) {
             const s = MJ_STOPS[i];
+            mjSkip = deferred();                 // fresh skip target for this stop
             flyTo(s.lon, s.lat, scaleForTileZoom(s.z, s.lat));
-            await tourSleep(1700); if (!alive()) return;   // let the flight and the tiles land
-            showTourStop(s, i, MJ_STOPS.length);
-            await say(s.text, 20000); if (!alive()) return;
-            await playPreview(await trackFor(s), alive, 18000);
+            if (await untilSkip(tourSleep(1700))) { if (!alive()) return; continue; }
             if (!alive()) return;
-            await tourSleep(500); if (!alive()) return;
+            showTourStop(s, i, MJ_STOPS.length);
+            if (await untilSkip(say(s.text, 20000))) { if (!alive()) return; continue; }
+            if (!alive()) return;
+            if (await untilSkip(playPreview(await trackFor(s), alive, 18000))) { if (!alive()) return; continue; }
+            if (!alive()) return;
+            await untilSkip(tourSleep(500)); if (!alive()) return;
           }
-          await say(MJ_OUTRO, 11000);
+          mjSkip = deferred();
+          await untilSkip(say(MJ_OUTRO, 11000));
         } catch (e) {
           /* best-effort, like the other tours */
         } finally {
+          mjSkip = null;
+          skipEl.hidden = true;
           if (token === tourToken) setTourUI(false);
         }
       })();
