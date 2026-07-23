@@ -1892,6 +1892,67 @@
         text: 'She died in this city on 4 October 2009, and Argentina gave her something close to a state farewell. She had spent fifty years singing other people’s songs — Violeta Parra’s, León Gieco’s, María Elena Walsh’s — and made them sound like they had come from everyone.' }
     ];
 
+    // Africa's. Thirty-one years of not being allowed home, and the year that
+    // ended. Two stops are Johannesburg — the second pulls back, so leaving and
+    // returning don't land on the same view of the same street.
+    const MAKEBA_STOPS = [
+      { place: 'Johannesburg', song: 'Qongqothwane', songBy: 'Miriam Makeba',
+        where: 'South Africa', year: '1932',
+        lon: 28.0456, lat: -26.2044, z: 13, wiki: 'Johannesburg',
+        text: 'Zenzile Miriam Makeba was born here on 4 March 1932. She was singing with the Manhattan Brothers and the Skylarks in the 1950s, in a country that was busy writing apartheid into law around her.' },
+      { place: 'Venice', song: 'Pata Pata', songBy: 'Miriam Makeba',
+        where: 'Italy', year: '1959',
+        lon: 12.3358, lat: 45.4375, z: 13, wiki: 'Venice',
+        text: 'She appeared in Come Back, Africa, an anti-apartheid film shot partly in secret, and travelled to its screening at the Venice film festival in 1959. The trip made her famous outside South Africa — and it turned out to be the last time she left the country freely.' },
+      { place: 'United Nations Headquarters', song: 'Khawuleza', songBy: 'Miriam Makeba',
+        where: 'New York, United States', year: '1963',
+        lon: -73.9681, lat: 40.7494, z: 16, wiki: 'Headquarters of the United Nations',
+        text: 'In 1960 she tried to fly home for her mother’s funeral and found her passport had been revoked. Three years later she testified here against apartheid, describing police brutality to a special committee. South Africa answered by taking her citizenship and banning her records.' },
+      { place: 'Conakry', song: 'A Luta Continua', songBy: 'Miriam Makeba',
+        where: 'Guinea', year: '1968',
+        lon: -13.7122, lat: 9.5092, z: 13, wiki: 'Conakry',
+        text: 'Her marriage to the American activist Stokely Carmichael cost her the United States too: bookings vanished and her visa was withdrawn. President Sékou Touré invited her to Guinea as a guest of the state, and this city became home for much of the next two decades.' },
+      { place: 'Johannesburg', song: 'Soweto Blues', songBy: 'Miriam Makeba',
+        where: 'South Africa', year: '1990',
+        lon: 28.0456, lat: -26.2044, z: 10,
+        text: 'Mandela was released in February 1990 and asked her to come back. She landed that June, after thirty-one years away, travelling on a French passport because she still had no country of her own to issue one.' },
+      { place: 'Castel Volturno', song: 'Malaika', songBy: 'Miriam Makeba',
+        where: 'Campania, Italy', year: '2008',
+        lon: 13.9167, lat: 41.05, z: 14, wiki: 'Castel Volturno',
+        text: 'She died here on 9 November 2008, aged seventy-six, taken ill after singing at a concert staged against organised crime. She had spent her life singing in places she had been sent to rather than chosen, and she was working right to the end of it.' }
+    ];
+
+    // Antarctica's. The only tour with no music — there is none to draw on, so
+    // this one runs on Frank Hurley's photographs, which are out of copyright
+    // and are the whole reason the expedition is remembered as vividly as it is.
+    const SHACKLETON_STOPS = [
+      { place: 'Plymouth', where: 'England', year: '1914',
+        lon: -4.1422, lat: 50.3714, z: 13, wiki: 'Plymouth',
+        text: 'Endurance sailed from here in August 1914, days after Britain entered the war. Shackleton offered the ship and crew to the Admiralty first; he was told to go. The plan was to cross Antarctica on foot, coast to coast, by way of the pole.' },
+      { place: 'Grytviken', where: 'South Georgia', year: '1914',
+        lon: -36.5081, lat: -54.2814, z: 13, wiki: 'Grytviken',
+        text: 'They spent a month at this whaling station before heading south, and the whalers told them the pack ice was the worst they had seen in years. They went anyway, leaving in December 1914. It was the last time any of them stood on land for sixteen months.' },
+      { place: 'The Weddell Sea', where: 'Antarctica', year: '1915',
+        lon: -52.33, lat: -68.75, z: 8,
+        file: 'Endurance trapped in pack ice.jpg',
+        photoNote: 'Endurance held in the pack, photographed by Frank Hurley',
+        text: 'The ship was caught in the ice in January 1915, one day short of the coast, and drifted locked inside it for ten months. In November the pressure finally broke her hull and she went down, leaving twenty-eight men standing on a floe with three lifeboats.' },
+      { place: 'Elephant Island', where: 'South Shetland Islands', year: '1916',
+        lon: -55.12, lat: -61.14, z: 11,
+        file: 'AllSafeAllWell.jpg',
+        photoNote: 'The rescue at Elephant Island, August 1916 — Frank Hurley',
+        text: 'After months on drifting floes they reached this uninhabited rock in April 1916. Twenty-two men stayed here under two upturned boats through the winter while Shackleton went for help. He came back on his fourth attempt, four and a half months later, and took every one of them off alive.' },
+      { place: 'Stromness', where: 'South Georgia', year: '1916',
+        lon: -36.70, lat: -54.15, z: 13,
+        file: 'James Caird bow.jpg',
+        photoNote: 'The James Caird, the boat that made the crossing',
+        text: 'Shackleton and five others sailed 800 miles of the roughest ocean on earth in a twenty-two foot lifeboat, navigating by four sextant sightings in sixteen days. They landed on the wrong side of the island and crossed its uncharted mountains on foot to reach the whaling station here.' },
+      { place: 'Grytviken', where: 'South Georgia', year: '1922',
+        lon: -36.5081, lat: -54.2814, z: 16,
+        file: 'South Georgia Ernest Shackleton grave in Grytviken.jpg',
+        text: 'He died of a heart attack aboard ship here in January 1922, at the start of another expedition south, and his widow asked that he be buried on the island rather than brought home. He is in the whalers’ cemetery, facing south.' }
+    ];
+
     // Every hidden tour, keyed by what you type to summon it.
     const EGG_TOURS = [
       { name: 'Michael Jackson', keys: ['michael jackson', 'king of pop'],
@@ -1913,7 +1974,15 @@
       { name: 'Mercedes Sosa', keys: ['mercedes sosa', 'la negra'],
         blurb: 'A tour of the places that made her',
         intro: 'A short tour of the places that made Mercedes Sosa — from a radio contest in Tucumán to a homecoming in Buenos Aires, by way of three years she was not allowed to spend at home.',
-        stops: SOSA_STOPS }
+        stops: SOSA_STOPS },
+      { name: 'Miriam Makeba', keys: ['miriam makeba', 'makeba', 'mama africa'],
+        blurb: 'A tour of the places that made her',
+        intro: 'A short tour of the places that made Miriam Makeba — from Johannesburg to Johannesburg, by way of thirty-one years in which she was not allowed to go home.',
+        stops: MAKEBA_STOPS },
+      { name: 'Ernest Shackleton', keys: ['ernest shackleton', 'shackleton', 'endurance'],
+        blurb: 'A tour of the places that made him',
+        intro: 'A short tour of the Endurance expedition — how twenty-eight men lost their ship at the bottom of the world in 1915, and how every one of them came home.',
+        stops: SHACKLETON_STOPS }
     ];
     // counted from the list, so adding a stop can't leave the closing line lying
     function tourOutro(tour) {
