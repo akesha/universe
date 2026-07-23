@@ -1831,6 +1831,37 @@
         text: 'His ashes were brought back to Fremantle and buried here. The grave is on the National Trust’s register and is the most visited in the country; there is a statue of him down at the harbour as well. He is home, and people still come.' }
     ];
 
+    // Asia's. A dancer who became a sitarist, and the decade in which the
+    // instrument stopped being exotic to Western ears and started being music.
+    const SHANKAR_STOPS = [
+      { place: 'Varanasi', song: 'Raga Jog', songBy: 'Ravi Shankar',
+        where: 'Uttar Pradesh, India', year: '1920',
+        lon: 83.0128, lat: 25.3189, z: 13, wiki: 'Varanasi',
+        text: 'Ravi Shankar was born in this city on the Ganges on 7 April 1920, the youngest of several brothers in a Bengali family. He would not take up the sitar seriously for another eighteen years.' },
+      { place: 'Paris', song: 'Dhun', songBy: 'Ravi Shankar',
+        where: 'France', year: '1930s',
+        lon: 2.3522, lat: 48.8566, z: 12, wiki: 'Paris',
+        text: 'At ten he joined the dance company his elder brother Uday ran from Paris, and spent his boyhood touring Europe as a dancer. He grew up on stages far from home, which is part of why he was later so at ease on them.' },
+      { place: 'Maihar', song: 'Raga Charu Keshi', songBy: 'Ravi Shankar',
+        where: 'Madhya Pradesh, India', year: '1938–44',
+        lon: 80.761, lat: 24.262, z: 14, wiki: 'Maihar',
+        photoNote: 'The Sharada temple above Maihar',
+        text: 'At eighteen he gave up dancing, came to this small town and submitted to seven years of training under the court musician Allauddin Khan. It was an austere apprenticeship, and everything he became was built in it.' },
+      { place: 'Monterey', song: 'Raga Piloo', songBy: 'Ravi Shankar',
+        where: 'California, United States', year: '1967',
+        lon: -121.8628, lat: 36.5944, z: 15,
+        text: 'He played a full afternoon set at the Monterey pop festival in June 1967, to an audience there for rock bands, and stopped it dead. He was already a master at home; this is where the rest of the world caught up.' },
+      { place: 'Bethel', song: 'Raga Bhimpalasi', songBy: 'Ravi Shankar',
+        where: 'New York, United States', year: '1969',
+        lon: -74.8778, lat: 41.6972, z: 14, wiki: 'Bethel Woods Center for the Arts',
+        photoNote: 'The Woodstock site at Bethel, now a music centre',
+        text: 'He played Woodstock in the rain in August 1969 and did not much enjoy it. He grew wary of being treated as a curiosity by an audience that wanted a spectacle more than a raga.' },
+      { place: 'Madison Square Garden', song: 'Bangla Dhun', songBy: 'Ravi Shankar', songAlbum: 'Concert for Bangladesh',
+        where: 'New York, United States', year: '1971',
+        lon: -73.9936, lat: 40.7506, z: 16, wiki: 'Madison Square Garden',
+        text: 'The Concert for Bangladesh on 1 August 1971 was his idea before it was anyone else’s — he asked George Harrison for help raising money for refugees of the war, and Harrison assembled the bill. It is the template every benefit concert since has followed.' }
+    ];
+
     // Every hidden tour, keyed by what you type to summon it.
     const EGG_TOURS = [
       { name: 'Michael Jackson', keys: ['michael jackson', 'king of pop'],
@@ -1844,7 +1875,11 @@
       { name: 'AC/DC', keys: ['ac/dc', 'acdc', 'ac dc'],
         blurb: 'A tour of the places that made them',
         intro: 'A short tour of the places that made AC/DC — from a migrant family arriving in Sydney to a grave in Fremantle that people still travel to visit.',
-        stops: ACDC_STOPS }
+        stops: ACDC_STOPS },
+      { name: 'Ravi Shankar', keys: ['ravi shankar', 'shankar'],
+        blurb: 'A tour of the places that made him',
+        intro: 'A short tour of the places that made Ravi Shankar — from a house in Varanasi to the night in New York that invented the benefit concert.',
+        stops: SHANKAR_STOPS }
     ];
     // counted from the list, so adding a stop can't leave the closing line lying
     function tourOutro(tour) {
