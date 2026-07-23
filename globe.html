@@ -1696,7 +1696,6 @@
     // Seven places, in order, from the house he was born in to the one he was
     // buried from. Dates and addresses are the documented ones; the coordinates
     // point at the actual buildings where a building is the point.
-    const MJ_KEYS = ['michael jackson', 'king of pop'];
     const MJ_STOPS = [
       { place: '2300 Jackson Street', song: 'I Want You Back', songBy: 'The Jackson 5', where: 'Gary, Indiana', year: '1958',
         lon: -87.34643, lat: 41.59337, z: 14, wiki: 'Michael Jackson Childhood Home',
@@ -1758,9 +1757,60 @@
         lon: -118.2453, lat: 34.1197, z: 15, wiki: 'Forest Lawn Memorial Park, Glendale',
         text: 'He was laid to rest here on 3 September 2009, a few miles from the city he had worked in since he was a boy.' }
     ];
-    const MJ_INTRO = 'A short tour of the places that made Michael Jackson — from a two-bedroom house in Indiana to a stage in London he never got to stand on.';
+    // Europe's hidden tour. Same shape as the one above: places in date order,
+    // each with the record that belongs to it. The story leaves the continent
+    // twice — New York and Rishikesh — because their story did.
+    const BEATLES_STOPS = [
+      { place: 'St Peter’s Church, Woolton', song: 'In My Life', songBy: 'The Beatles', songAlbum: 'Rubber Soul',
+        where: 'Liverpool, England', year: '1957',
+        lon: -2.8722, lat: 53.3757, z: 16,
+        file: "St Peter's Church, Woolton (1).jpg",
+        text: 'At the garden fete here on 6 July 1957, a friend introduced a fifteen-year-old Paul McCartney to John Lennon, whose skiffle group the Quarrymen were playing that afternoon. McCartney played them a couple of rock and roll numbers from memory. A fortnight later he was invited to join.' },
+      { place: 'The Reeperbahn', song: 'Twist and Shout', songBy: 'The Beatles', songAlbum: 'Please Please Me',
+        where: 'Hamburg, Germany', year: '1960–62',
+        lon: 9.9631, lat: 53.5497, z: 15, wiki: 'Reeperbahn',
+        text: 'From August 1960 they played the clubs of this street on punishing nights that ran for hours. They arrived a competent local band and came back a formidable one — the residencies here are where the hours went in.' },
+      { place: 'The Cavern Club', song: 'Love Me Do', songBy: 'The Beatles', songAlbum: 'Please Please Me',
+        where: 'Liverpool, England', year: '1961–63',
+        lon: -2.9872, lat: 53.4061, z: 16, wiki: 'The Cavern Club',
+        text: 'A cellar on Mathew Street where they played close to three hundred times. It was here that Brian Epstein first saw them, in November 1961, and decided to manage a band he had never heard of.' },
+      { place: 'Abbey Road Studios', song: 'A Day in the Life', songBy: 'The Beatles', songAlbum: 'Sgt',
+        where: 'London, England', year: '1962–69',
+        lon: -0.1783, lat: 51.5319, z: 17,
+        file: 'Abbey Road zebra crossing, London 2007-03-31.jpg',
+        photoNote: 'The zebra crossing outside the studio',
+        text: 'Almost everything they recorded was made in this building, from their first session in June 1962 onwards. In August 1969 they walked across the zebra crossing outside for a photograph, and turned an ordinary street into somewhere people still queue to stand.' },
+      { place: 'Shea Stadium', song: 'Help!', songBy: 'The Beatles', songAlbum: 'Help',
+        where: 'New York, United States', year: '1965',
+        lon: -73.8481, lat: 40.7556, z: 15, wiki: 'Shea Stadium',
+        photoNote: 'Shea Stadium, demolished in 2009',
+        text: 'On 15 August 1965 they played to 55,600 people here — more than had ever seen a rock concert. Nobody could hear much of anything, and the modern stadium show starts from this night. The ground was demolished in 2009.' },
+      { place: 'The Beatles Ashram', song: 'Dear Prudence', songBy: 'The Beatles',
+        where: 'Rishikesh, India', year: '1968',
+        lon: 78.3128, lat: 30.1097, z: 16, file: 'Beatles Ashram 01.jpg',
+        text: 'They came here in February 1968 to study meditation and stayed, on and off, into April. With little else to do they wrote — a great deal of what became the White Album was written at this ashram above the Ganges. It stood abandoned for decades and is open again now.' },
+      { place: 'The Apple rooftop, 3 Savile Row', song: 'Get Back', songBy: 'The Beatles', songAlbum: 'Let It Be',
+        where: 'London, England', year: '1969',
+        lon: -0.1414, lat: 51.5113, z: 17, file: '3 Savile Row.jpg',
+        photoNote: 'The Apple building at 3 Savile Row',
+        text: 'On 30 January 1969 they climbed onto the roof of their own offices and played for forty-two minutes while the street below filled with people trying to work out where it was coming from. The police came and asked them to turn it down. It was the last time they performed in public.' }
+    ];
+
+    // Every hidden tour, keyed by what you type to summon it.
+    const EGG_TOURS = [
+      { name: 'Michael Jackson', keys: ['michael jackson', 'king of pop'],
+        blurb: 'A tour of the places that made him',
+        intro: 'A short tour of the places that made Michael Jackson — from a two-bedroom house in Indiana to a stage in London he never got to stand on.',
+        stops: MJ_STOPS },
+      { name: 'The Beatles', keys: ['the beatles', 'beatles', 'fab four'],
+        blurb: 'A tour of the places that made them',
+        intro: 'A short tour of the places that made the Beatles — from a church fete in Liverpool to a rooftop in London, and the ten years in between.',
+        stops: BEATLES_STOPS }
+    ];
     // counted from the list, so adding a stop can't leave the closing line lying
-    const MJ_OUTRO = MJ_STOPS.length + ' places, one life. Tap anywhere to carry on exploring by yourself.';
+    function tourOutro(tour) {
+      return tour.stops.length + ' places. Tap anywhere to carry on exploring by yourself.';
+    }
 
     // ---- photographs of the stops ----
     // Wikipedia's lead image for the place, plus the credit it's published
@@ -1938,7 +1988,7 @@
     }
 
     // The card, filled by hand — these stops aren't in any of the datasets.
-    function showTourStop(stop, i, total) {
+    function showTourStop(stop, i, total, tourName) {
       const id = ++reqId;                       // cancel any in-flight lookups
       hintEl.style.display = 'none';
       cardEl.classList.add('show');
@@ -1946,7 +1996,7 @@
       setFlag(null);
       zoomEl.hidden = true;
       placesEl.hidden = true;
-      eyebrowEl.textContent = 'Michael Jackson · ' + (i + 1) + ' of ' + total;
+      eyebrowEl.textContent = tourName + ' · ' + (i + 1) + ' of ' + total;
       nameEl.textContent = stop.place;
       capKEl.textContent = 'Year'; capEl.textContent = stop.year; delete capEl.dataset.spoken;
       leaderKEl.textContent = 'Where';
@@ -1974,12 +2024,12 @@
     }
     document.getElementById('skip').addEventListener('click', requestMJSkip);
 
-    function startMJTour() {
-      if (!countriesFC) return;
+    function startEggTour(tour) {
+      if (!countriesFC || !tour) return;
       const token = ++tourToken;
       setTourUI(true);
       skipEl.hidden = false;
-      setPlaceParam('Michael Jackson');          // the whole tour is linkable
+      setPlaceParam(tour.name);                  // the whole tour is linkable
       const alive = function () { return token === tourToken; };
       const say = function (text, maxMs) {
         if (!alive()) return Promise.resolve();
@@ -2001,16 +2051,16 @@
           cardEl.classList.remove('show');
           autoSpin = false;
           // start every photo downloading now, so each stop has one by arrival
-          MJ_STOPS.forEach(function (s) { if (s.wiki || s.file) photoFor(s); trackFor(s); });
+          tour.stops.forEach(function (s) { if (s.wiki || s.file) photoFor(s); trackFor(s); });
           mjSkip = deferred();
-          if (await untilSkip(say(MJ_INTRO, 13000)) && !alive()) return;
-          for (let i = 0; i < MJ_STOPS.length; i++) {
-            const s = MJ_STOPS[i];
+          if (await untilSkip(say(tour.intro, 13000)) && !alive()) return;
+          for (let i = 0; i < tour.stops.length; i++) {
+            const s = tour.stops[i];
             mjSkip = deferred();                 // fresh skip target for this stop
             flyTo(s.lon, s.lat, scaleForTileZoom(s.z, s.lat));
             if (await untilSkip(tourSleep(1700))) { if (!alive()) return; continue; }
             if (!alive()) return;
-            showTourStop(s, i, MJ_STOPS.length);
+            showTourStop(s, i, tour.stops.length, tour.name);
             if (await untilSkip(say(s.text, 20000))) { if (!alive()) return; continue; }
             if (!alive()) return;
             if (await untilSkip(playPreview(await trackFor(s), alive, 18000))) { if (!alive()) return; continue; }
@@ -2018,7 +2068,7 @@
             await untilSkip(tourSleep(500)); if (!alive()) return;
           }
           mjSkip = deferred();
-          await untilSkip(say(MJ_OUTRO, 11000));
+          await untilSkip(say(tourOutro(tour), 11000));
         } catch (e) {
           /* best-effort, like the other tours */
         } finally {
@@ -2070,13 +2120,16 @@
     // namesake city (New York, Tokyo) beats its state while a small-town name
     // (Bahia, Georgia's towns) lets the region win.
     const RANK_COUNTRY = Infinity, RANK_REGION = 1e6;
-    function isMJQuery(nq) {
-      return MJ_KEYS.some(function (k) { return k === nq || (nq.length >= 6 && k.indexOf(nq) === 0); });
+    function tourForQuery(nq) {
+      return EGG_TOURS.find(function (t) {
+        return t.keys.some(function (k) { return k === nq || (nq.length >= 6 && k.indexOf(nq) === 0); });
+      }) || null;
     }
     function rankedHits(nq) {
       const hits = [];
       // rank -1 keeps the hidden tour above every real place once it's summoned
-      if (isMJQuery(nq)) hits.push({ kind: 'mjtour', name: 'Michael Jackson', rank: -1, pop: RANK_COUNTRY });
+      const eggTour = tourForQuery(nq);
+      if (eggTour) hits.push({ kind: 'eggtour', name: eggTour.name, rank: -1, pop: RANK_COUNTRY, tour: eggTour });
       if (countriesFC) {
         for (const f of countriesFC.features) {
           const r = matchRank(f.properties.name, nq);
@@ -2110,7 +2163,7 @@
     }
     function dispatchHit(h) {
       if (!h) return;
-      if (h.kind === 'mjtour') startMJTour();
+      if (h.kind === 'eggtour') startEggTour(h.tour);
       else if (h.kind === 'country') gotoCountry(h.feature);
       else if (h.kind === 'region') gotoRegion(h.feature);
       else gotoCity(h.city);
@@ -2130,8 +2183,8 @@
         const ctx = document.createElement('span'); ctx.className = 'ctx';
         if (h.kind === 'country') {
           ctx.textContent = 'Country';
-        } else if (h.kind === 'mjtour') {
-          ctx.textContent = 'A tour of the places that made him';
+        } else if (h.kind === 'eggtour') {
+          ctx.textContent = h.tour.blurb;
         } else if (h.kind === 'region') {
           const cn = h.feature.properties.admin || h.feature.properties.geonunit || '';
           ctx.textContent = ['State / province', cn].filter(Boolean).join(' · ');
@@ -2259,7 +2312,8 @@
       if (!q || !countriesFC) return;
       const nq = norm(q).trim();
       // The hidden tour flies to fixed coordinates, so it needs no datasets.
-      if (isMJQuery(nq)) { startMJTour(); return; }
+      const dl = tourForQuery(nq);
+      if (dl) { startEggTour(dl); return; }
       // An exact country match needs no extra data — take it and skip the fetch.
       const exactCountry = countriesFC.features.find(function (f) { return matchRank(f.properties.name, nq) === 0; });
       if (exactCountry) { gotoCountry(exactCountry); return; }
