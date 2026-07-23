@@ -1862,6 +1862,36 @@
         text: 'The Concert for Bangladesh on 1 August 1971 was his idea before it was anyone else’s — he asked George Harrison for help raising money for refugees of the war, and Harrison assembled the bill. It is the template every benefit concert since has followed.' }
     ];
 
+    // South America's. A voice that was banned from its own country and came
+    // back to it. The last two stops sit in the same city, so the closing one
+    // pulls back to the whole of Buenos Aires rather than repeating a street.
+    const SOSA_STOPS = [
+      { place: 'San Miguel de Tucumán', song: 'Canción con Todos', songBy: 'Mercedes Sosa',
+        where: 'Tucumán, Argentina', year: '1935',
+        lon: -65.2167, lat: -26.8167, z: 13, wiki: 'San Miguel de Tucumán',
+        text: 'Haydée Mercedes Sosa was born here on 9 July 1935, into a poor family of Quechua and French descent. She entered a local radio singing competition as a teenager under a false name, won it, and was given a contract on the spot.' },
+      { place: 'Mendoza', song: 'Todo Cambia', songBy: 'Mercedes Sosa',
+        where: 'Argentina', year: '1963',
+        lon: -68.8444, lat: -32.8897, z: 13, wiki: 'Mendoza, Argentina',
+        text: 'On 11 February 1963, in a journalists’ club in this city, she and a group of poets and musicians published the manifesto of the Nuevo Cancionero — an argument that folk music should carry the life of ordinary people rather than decorate it. It shaped protest song across the continent.' },
+      { place: 'La Plata', song: 'Como la Cigarra', songBy: 'Mercedes Sosa',
+        where: 'Buenos Aires Province, Argentina', year: '1979',
+        lon: -57.9544, lat: -34.9211, z: 14, wiki: 'La Plata',
+        text: 'In 1979, under the military junta, she was searched and arrested on stage in the middle of a concert here, along with around two hundred people in the audience. International pressure got her out. Fearing for her life, she left the country.' },
+      { place: 'Madrid', song: 'Alfonsina y el Mar', songBy: 'Mercedes Sosa',
+        where: 'Spain', year: '1979–82',
+        lon: -3.7033, lat: 40.4169, z: 12, wiki: 'Madrid',
+        text: 'Banned at home, she spent three years in exile in Paris and then here. She kept singing the whole time, to audiences of Latin Americans who had also been driven out, and her records went on circulating in Argentina without her.' },
+      { place: 'Teatro Ópera', song: 'Gracias a la Vida', songBy: 'Mercedes Sosa',
+        where: 'Buenos Aires, Argentina', year: '1982',
+        lon: -58.3806, lat: -34.6037, z: 17,
+        text: 'She came home in February 1982, months before the junta fell, and sang a run of concerts at this theatre on Corrientes — sharing the stage with younger musicians who had grown up on records she was not allowed to make at home. The live album of those nights sold immediately and enormously.' },
+      { place: 'Buenos Aires', song: 'Solo le Pido a Dios', songBy: 'Mercedes Sosa',
+        where: 'Argentina', year: '2009',
+        lon: -58.3814, lat: -34.6039, z: 11, wiki: 'Buenos Aires',
+        text: 'She died in this city on 4 October 2009, and Argentina gave her something close to a state farewell. She had spent fifty years singing other people’s songs — Violeta Parra’s, León Gieco’s, María Elena Walsh’s — and made them sound like they had come from everyone.' }
+    ];
+
     // Every hidden tour, keyed by what you type to summon it.
     const EGG_TOURS = [
       { name: 'Michael Jackson', keys: ['michael jackson', 'king of pop'],
@@ -1879,7 +1909,11 @@
       { name: 'Ravi Shankar', keys: ['ravi shankar', 'shankar'],
         blurb: 'A tour of the places that made him',
         intro: 'A short tour of the places that made Ravi Shankar — from a house in Varanasi to the night in New York that invented the benefit concert.',
-        stops: SHANKAR_STOPS }
+        stops: SHANKAR_STOPS },
+      { name: 'Mercedes Sosa', keys: ['mercedes sosa', 'la negra'],
+        blurb: 'A tour of the places that made her',
+        intro: 'A short tour of the places that made Mercedes Sosa — from a radio contest in Tucumán to a homecoming in Buenos Aires, by way of three years she was not allowed to spend at home.',
+        stops: SOSA_STOPS }
     ];
     // counted from the list, so adding a stop can't leave the closing line lying
     function tourOutro(tour) {
