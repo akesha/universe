@@ -1796,6 +1796,41 @@
         text: 'On 30 January 1969 they climbed onto the roof of their own offices and played for forty-two minutes while the street below filled with people trying to work out where it was coming from. The police came and asked them to turn it down. It was the last time they performed in public.' }
     ];
 
+    // Australia's. A migrant family, a singer from Fremantle, and the loss the
+    // band was rebuilt after. Two stops carry no photograph on purpose: the
+    // club is long gone, and the death is left unillustrated.
+    const ACDC_STOPS = [
+      { place: 'Burwood, Sydney', song: 'High Voltage', songBy: 'AC/DC', songAlbum: 'High Voltage',
+        where: 'New South Wales, Australia', year: '1963',
+        lon: 151.1049, lat: -33.8772, z: 15, file: 'Burwood Post Office NOV2019.jpg',
+        photoNote: 'Burwood, the Sydney suburb the family settled in',
+        text: 'The Youngs flew out of Glasgow in mid-1963 and settled here — William and Margaret with their children, Angus among them, then eight years old. Two of those brothers would start the band a decade later, and a third, George, would produce them.' },
+      { place: 'Chequers', song: 'Can I Sit Next to You Girl', songBy: 'AC/DC', songAlbum: 'High Voltage',
+        where: 'Sydney, Australia', year: '1973',
+        lon: 151.2088, lat: -33.8776, z: 16,
+        text: 'AC/DC played their first show on New Year’s Eve 1973 at this Sydney nightclub, with Dave Evans singing and Angus and Malcolm Young on guitars. The club is long gone. Bon Scott was still ten months away.' },
+      { place: 'Fremantle', song: 'T.N.T.', songBy: 'AC/DC', songAlbum: 'High Voltage',
+        where: 'Western Australia', year: '1974',
+        lon: 115.7475, lat: -32.0542, z: 14, wiki: 'Fremantle',
+        text: 'Bon Scott grew up in this port town after his own family emigrated from Scotland, and he was singing in Perth bands when AC/DC found him in 1974. He was older than the Youngs and had been at it longer. The band people think of started when he joined.' },
+      { place: 'Swanston Street', song: 'It’s a Long Way to the Top', songBy: 'AC/DC', songAlbum: 'High Voltage',
+        where: 'Melbourne, Australia', year: '1976',
+        lon: 144.9631, lat: -37.8059, z: 16, file: 'Swanston Street Melbourne.jpg',
+        text: 'On 23 February 1976 they played on the back of a flatbed truck down this street, with three pipers from the Rats of Tobruk band alongside them, while ordinary traffic carried on around it. It cost about 380 dollars to film and became the most famous piece of footage Australian music has.' },
+      { place: 'London', song: 'Highway to Hell', songBy: 'AC/DC', songAlbum: 'Highway to Hell',
+        where: 'England', year: '1980',
+        lon: -0.0730, lat: 51.4520, z: 13,
+        text: 'Bon Scott died in London on 19 February 1980, aged thirty-three, months after Highway to Hell had finally opened America to them. The band came close to stopping altogether.' },
+      { place: 'Compass Point Studios', song: 'Back in Black', songBy: 'AC/DC', songAlbum: 'Back In Black',
+        where: 'Nassau, Bahamas', year: '1980',
+        lon: -77.4092, lat: 25.0836, z: 15, file: 'Compas Point Studio (14949011761).jpg',
+        text: 'They recorded here in April and May 1980, weeks after the funeral, with Brian Johnson singing. Back in Black was made as a tribute to Scott and went on to become one of the best-selling albums ever released.' },
+      { place: 'Fremantle Cemetery', song: 'Ride On', songBy: 'AC/DC', songAlbum: 'Dirty Deeds',
+        where: 'Western Australia', year: '1980',
+        lon: 115.7798, lat: -32.0519, z: 16, file: "Bon Scott's grave.jpg",
+        text: 'His ashes were brought back to Fremantle and buried here. The grave is on the National Trust’s register and is the most visited in the country; there is a statue of him down at the harbour as well. He is home, and people still come.' }
+    ];
+
     // Every hidden tour, keyed by what you type to summon it.
     const EGG_TOURS = [
       { name: 'Michael Jackson', keys: ['michael jackson', 'king of pop'],
@@ -1805,7 +1840,11 @@
       { name: 'The Beatles', keys: ['the beatles', 'beatles', 'fab four'],
         blurb: 'A tour of the places that made them',
         intro: 'A short tour of the places that made the Beatles — from a church fete in Liverpool to a rooftop in London, and the ten years in between.',
-        stops: BEATLES_STOPS }
+        stops: BEATLES_STOPS },
+      { name: 'AC/DC', keys: ['ac/dc', 'acdc', 'ac dc'],
+        blurb: 'A tour of the places that made them',
+        intro: 'A short tour of the places that made AC/DC — from a migrant family arriving in Sydney to a grave in Fremantle that people still travel to visit.',
+        stops: ACDC_STOPS }
     ];
     // counted from the list, so adding a stop can't leave the closing line lying
     function tourOutro(tour) {
